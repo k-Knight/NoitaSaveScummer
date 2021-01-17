@@ -1,4 +1,5 @@
 import os
+import io
 import time
 import subprocess
 import sys
@@ -6,6 +7,7 @@ from threading import Thread
 import datetime
 import subprocess
 import tarfile
+import ctypes
 
 from system_hotkey import SystemHotkey
 import yaml
@@ -14,9 +16,10 @@ import win32process
 import win32con
 import keyboard
 import psutil
-
 import wx
 from wx.lib.newevent import NewEvent
+
+from mem_resources.resources import *
 
 config = {
    'saveFolderPath' : os.path.expanduser('~') + '\\AppData\\LocalLow\\Nolla_Games_Noita',
@@ -172,8 +175,9 @@ def findNoitaExecutable():
          config['executable_path'] = proc.exe()
 
 class ScaledBitmap (wx.Bitmap):
-   def __init__(self, path, width, height, quality = wx.IMAGE_QUALITY_HIGH):
-      image = wx.Image(name = path, type = wx.BITMAP_TYPE_ANY, index = -1)
+   def __init__(self, data, width, height, quality = wx.IMAGE_QUALITY_HIGH):
+      image = wx.ImageFromStream(io.BytesIO(data), type = wx.BITMAP_TYPE_ANY, index = -1)
+      #ImageFromStream
 
       ratio = min(
          float(width) / float(image.GetWidth()),
@@ -224,7 +228,7 @@ class ActionBitmapButton (wx.BitmapButton, ActionButton):
 
 class TitleImage (wx.StaticBitmap):
    def __init__(self, parent):
-      logo  = ScaledBitmap('./resources/logo.png', 587, 24)
+      logo  = ScaledBitmap(resources_logo_png, 587, 24)
 
       wx.StaticBitmap.__init__(
          self,
@@ -246,7 +250,7 @@ class CloseButton (ActionBitmapButton):
       ActionBitmapButton.__init__(
          self,
          parent,
-         bitmap = ScaledBitmap('./resources/close.png', 42, 24, wx.IMAGE_QUALITY_NEAREST),
+         bitmap = ScaledBitmap(resources_close_png, 42, 24, wx.IMAGE_QUALITY_NEAREST),
          size = wx.Size(42, 24),
          style = wx.BORDER_NONE,
          pos = (654, 0)
@@ -273,7 +277,7 @@ class MinimizeButton (ActionBitmapButton):
       ActionBitmapButton.__init__(
          self,
          parent,
-         bitmap = ScaledBitmap('./resources/minimize.png', 42, 24, wx.IMAGE_QUALITY_NEAREST),
+         bitmap = ScaledBitmap(resources_minimize_png, 42, 24, wx.IMAGE_QUALITY_NEAREST),
          size = wx.Size(42, 24),
          style = wx.BORDER_NONE,
          pos = (612, 0)
@@ -400,7 +404,7 @@ class ListScrollBar (wx.Panel):
          self.scrollIndicator.SetPosition((0, posY))
 
 class ListMenuButton (ActionBitmapButton):
-   def __init__(self, parent, pos, name, path, imagePath, mouseMoveHandler):
+   def __init__(self, parent, pos, name, path, data, mouseMoveHandler):
       self.name = name
       self.path = path
       self.onMouseMove = mouseMoveHandler
@@ -408,7 +412,7 @@ class ListMenuButton (ActionBitmapButton):
       ActionBitmapButton.__init__(
          self,
          parent,
-         bitmap = ScaledBitmap(imagePath, 36, 36, wx.IMAGE_QUALITY_NEAREST),
+         bitmap = ScaledBitmap(data, 36, 36, wx.IMAGE_QUALITY_NEAREST),
          size = wx.Size(36, 36),
          style = wx.BORDER_NONE,
          pos = pos
@@ -427,7 +431,7 @@ class LoadSaveButton (ListMenuButton):
       self.passiveColor = colors['background']
       self.hoverColor = colors['hover-light']
 
-      ListMenuButton.__init__(self, parent, pos, name, path, './resources/load.png' , mouseMoveHandler)
+      ListMenuButton.__init__(self, parent, pos, name, path, resources_load_png, mouseMoveHandler)
 
    def PerformAction(self):
       window.makeLoad(self.name)
@@ -437,7 +441,7 @@ class DeleteSaveButton (ListMenuButton):
       self.passiveColor = colors['background']
       self.hoverColor = colors['hover-red']
 
-      ListMenuButton.__init__(self, parent, pos, name, path, './resources/close.png' , mouseMoveHandler)
+      ListMenuButton.__init__(self, parent, pos, name, path, resources_close_png, mouseMoveHandler)
 
    def PerformAction(self):
       window.openDeleteMenu(self.name)
@@ -1173,7 +1177,7 @@ class MainWindow (wx.Frame):
       self.contentPanel = SaveFileListPanel(self)
       line = wx.Panel(self, pos = (2, 26), size = (696, 2)).SetBackgroundColour(colors['border-light'])
       line = wx.Panel(self, pos = (164, 28), size = (3, 670)).SetBackgroundColour(colors['border-light'])
-      wx.StaticBitmap(self, bitmap=ScaledBitmap('./resources/background.png', 696, 670), pos = (2, 28), size = (162, 670))
+      wx.StaticBitmap(self, bitmap=ScaledBitmap(resources_background_png, 696, 670), pos = (2, 28), size = (162, 670))
 
    def __del__( self ):
       pass
@@ -1362,11 +1366,12 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.1.0'
+versionNumber = 'v0.1.1'
 app = wx.App()
 
-if os.path.exists('fonts/Gamepixies-8MO6n.ttf'):
-   wx.Font.AddPrivateFont('fonts/Gamepixies-8MO6n.ttf')
+num = ctypes.c_uint32()
+data = (ctypes.c_char * len(resources_Gamepixies_8MO6n_ttf))(*resources_Gamepixies_8MO6n_ttf)
+ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
 
 readConfig()
 findNoitaExecutable()
