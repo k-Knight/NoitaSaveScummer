@@ -12,7 +12,7 @@ The program does not know where the Noita's executable is located, therefore it 
 
 ## Default configuration
 
-- **Noita's save folder path** — ``C:\Program Files (x86)\Steam\steamapps\common\Noita\noita.exe``
+- **Noita's save folder path** — ``%USERPROFILE%\AppData\LocalLow\Nolla_Games_Noita``
 - **Quick-Save** — ``Ctrl`` + ``Shift`` + ``F5``
 - **Quick-Load** — ``Ctrl`` + ``Shift`` + ``F9``
 - **Save** — ``Ctrl`` + ``Alt`` + ``F5``
