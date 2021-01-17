@@ -1,6 +1,7 @@
 **/build
 **/dist
 **/__pycache__
+**/mem_resources
 
 **/*.spec
 **/*.exe
