@@ -1395,7 +1395,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.1.1'
+versionNumber = 'v0.1.2'
 app = wx.App()
 
 num = ctypes.c_uint32()
