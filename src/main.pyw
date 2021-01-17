@@ -174,9 +174,21 @@ def findNoitaExecutable():
       if proc:
          config['executable_path'] = proc.exe()
 
+def stylizeBorder(element, color):
+   size = element.GetSize()
+   positions = [
+      (0, 0),
+      (0, size.GetHeight() - 2),
+      (size.GetWidth() - 2, 0),
+      (size.GetWidth() - 2, size.GetHeight() - 2)
+   ]
+
+   for pos in positions:
+      wx.Panel(element, pos = pos, size = (2, 2)).SetBackgroundColour(colors[color])
+
 class ScaledBitmap (wx.Bitmap):
    def __init__(self, data, width, height, quality = wx.IMAGE_QUALITY_HIGH):
-      image = wx.ImageFromStream(io.BytesIO(data), type = wx.BITMAP_TYPE_ANY, index = -1)
+      image = wx.Image(io.BytesIO(data), type = wx.BITMAP_TYPE_ANY, index = -1)
       #ImageFromStream
 
       ratio = min(
@@ -455,6 +467,9 @@ class ScrollableList (wx.Panel):
       self.ContentWidth = size[0] - 18
       self.ContentHeight = size[1] - 4
 
+      wx.Panel(self, pos = (self.ContentWidth + 2, 0), size = (2, 2)).SetBackgroundColour(colors['content'])
+      wx.Panel(self, pos = (self.ContentWidth + 2, self.ContentHeight + 2), size = (2, 2)).SetBackgroundColour(colors['content'])
+
       self.containerWrapper = wx.Panel(self, size = (self.ContentWidth, self.ContentHeight), pos = (2, 2))
       self.containerWrapper.SetBackgroundColour(colors['text-input'])
 
@@ -569,6 +584,7 @@ class SaveInstance (wx.Panel):
       self.hoverColor = colors['border']
       self.passiveColor = colors['border-light']
       self.interactivePanel.SetBackgroundColour(self.passiveColor)
+      stylizeBorder(self.interactivePanel, 'text-input')
 
       panel = wx.Panel(self.interactivePanel, size = (sizeX - 34, 66), pos = (2,2))
       panel.SetBackgroundColour(colors['save-item'])
@@ -599,7 +615,9 @@ class SaveInstance (wx.Panel):
          element.Bind(wx.EVT_LEAVE_WINDOW, self.onMouseMove)
 
       self.loadButton = LoadSaveButton(panel, (panel.GetSize().GetWidth() - 102, 15), self.saveName, self.savePath, self.onMouseMove)
+      stylizeBorder(self.loadButton, 'save-item')
       self.deleteButton = DeleteSaveButton(panel, (panel.GetSize().GetWidth() - 51, 15), self.saveName, self.savePath, self.onMouseMove)
+      stylizeBorder(self.deleteButton, 'save-item')
 
    def onMouseMove(self, event):
       if self.enabled:
@@ -635,6 +653,7 @@ class ContentButton (wx.Button):
    def __init__(self, parent, label, size, pos):
       wx.Button.__init__(self, parent, label = label, size = size, style = wx.BORDER_NONE, pos = pos)
       self.border = parent
+      stylizeBorder(parent, 'content')
       self.passiveColor = colors['background']
       self.hoverColor = colors['hover-light']
 
@@ -695,6 +714,7 @@ class OptionChangePanel (wx.Panel):
 
       self.wrapper = wx.Panel(self, pos = (170, 6), size = (346, 38))
       self.wrapper.SetBackgroundColour(colors['button'])
+      stylizeBorder(self.wrapper, 'content')
 
       self.textPanel = wx.Panel(self.wrapper, pos = (2, 2), size = (342, 34))
       self.textPanel.SetBackgroundColour(colors['text-input'])
@@ -737,6 +757,7 @@ class OptionAutoclose (OptionChangePanel):
       self.value.Bind(wx.EVT_LEAVE_WINDOW, self.onMouseMove)
       self.value.Bind(wx.EVT_LEFT_UP, self.onClick)
 
+      stylizeBorder(self.wrapper, 'content')
       self.setValue()
 
    def setValue(self):
@@ -754,7 +775,7 @@ class OptionAutoclose (OptionChangePanel):
 
 class FolderSelectSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, config):
-      OptionChangePanel.__init__(self, parent, label = "Path to save folder :", pos = pos, align = wx.ALIGN_RIGHT, config = config)
+      OptionChangePanel.__init__(self, parent, label = "Path to save folder :", pos = pos, align = wx.ALIGN_LEFT, config = config)
       self.optionsMenu = optionsMenu
       self.setValue()
 
@@ -779,7 +800,7 @@ class FolderSelectSetting (OptionChangePanel):
 
 class ExecutableSelectSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, config):
-      OptionChangePanel.__init__(self, parent, label = "Path to executable :", pos = pos, align = wx.ALIGN_RIGHT, config = config)
+      OptionChangePanel.__init__(self, parent, label = "Path to executable :", pos = pos, align = wx.ALIGN_LEFT, config = config)
       self.optionsMenu = optionsMenu
       self.setValue()
 
@@ -796,16 +817,15 @@ class ExecutableSelectSetting (OptionChangePanel):
          dialog = wx.FileDialog(
             self,
             message='Select Noita executable',
-            defaultDir=defaultPath,
+            defaultDir=os.path.dirname(defaultPath),
             style=wx.FD_DEFAULT_STYLE | wx.FD_FILE_MUST_EXIST,
             pos=wx.DefaultPosition,
             size=wx.DefaultSize,
             wildcard="Executable files (*.exe)|*.exe"
          )
-         dialog.ShowModal()
-
-         self.config['executable_path'] = dialog.GetPath()
-         self.setValue()
+         if not dialog.ShowModal() == wx.ID_CANCEL:
+            self.config['executable_path'] = dialog.GetPath()
+            self.setValue()
 
 class BindingSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, binding, label, config):
@@ -891,6 +911,7 @@ class OptionsMenu (wx.Panel):
       wx.Panel.__init__(self, parent, size = (550, 550), pos = (75, 75))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
+      stylizeBorder(self, 'text-input')
       
       global config
       self.config = dict(config)
@@ -1004,6 +1025,7 @@ class PlaceholderPanel (wx.Panel):
       wx.Panel.__init__(self, parent, size = (550, 230), pos = (75, 235))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
+      stylizeBorder(self, 'text-input')
 
       self.contentPanel = wx.Panel(self, size = (546, 226), pos = (2,2))
       self.contentPanel.SetBackgroundColour(colors['content'])
@@ -1031,6 +1053,7 @@ class NewSaveMenu (wx.Panel):
 
       self.Raise()
       self.SetBackgroundColour(colors['border'])
+      stylizeBorder(self, 'text-input')
 
       contentPanel = wx.Panel(self, size = (546, 226), pos = (2,2))
       contentPanel.SetBackgroundColour(colors['content'])
@@ -1042,6 +1065,7 @@ class NewSaveMenu (wx.Panel):
 
       panel = wx.Panel(contentPanel, size = (486, 50), pos = (30, 70))
       panel.SetBackgroundColour(colors['button'])
+      stylizeBorder(panel, 'content')
       panel = wx.Panel(panel, size = (482, 46), pos = (2, 2))
       panel.SetBackgroundColour(colors['text-input'])
 
@@ -1095,6 +1119,7 @@ class SaveFileListPanel (ContentPanel):
 
    def CreateContent(self):
       self.saveList = ScrollableList(self, size = (502, 555), pos = (15, 50))
+      stylizeBorder(self.saveList, 'content')
       self.saveList.ShowLoadingStatus()
 
       panel = wx.Panel(self, pos = (63, 619), size = (154, 36))
@@ -1168,6 +1193,8 @@ class MainWindow (wx.Frame):
       self.SetBackgroundColour(colors['border'])
       self.Centre(wx.BOTH)
 
+      stylizeBorder(self, 'text-input')
+
       self.hotkeyEvent, EVT_RESULT = NewEvent()
       self.Bind(EVT_RESULT, self.hotkeyEventHandler)
       self.processCompletedEvent, EVT_RESULT = NewEvent()
@@ -1175,9 +1202,11 @@ class MainWindow (wx.Frame):
 
       TitlePanel(self)
       self.contentPanel = SaveFileListPanel(self)
-      line = wx.Panel(self, pos = (2, 26), size = (696, 2)).SetBackgroundColour(colors['border-light'])
-      line = wx.Panel(self, pos = (164, 28), size = (3, 670)).SetBackgroundColour(colors['border-light'])
+      wx.Panel(self, pos = (164, 28), size = (3, 670)).SetBackgroundColour(colors['border-light'])
+      line = wx.Panel(self, pos = (2, 26), size = (696, 2))
+      line.SetBackgroundColour(colors['border-light'])
       wx.StaticBitmap(self, bitmap=ScaledBitmap(resources_background_png, 696, 670), pos = (2, 28), size = (162, 670))
+      wx.Panel(line, pos = (162, 0), size = (2, 2)).SetBackgroundColour(colors['background'])
 
    def __del__( self ):
       pass
