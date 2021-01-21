@@ -1283,14 +1283,17 @@ class MainWindow (wx.Frame):
 
    def showSavePlaceholder(self):
       hkm.unregisterAll()
+      self.contentPanel.disable()
       self.popup = SavingPlaceholder(self)
 
    def showLoadPlaceholder(self):
       hkm.unregisterAll()
+      self.contentPanel.disable()
       self.popup = LoadingPlaceholder(self)
 
    def showDeletePlaceholder(self):
       hkm.unregisterAll()
+      self.contentPanel.disable()
       self.popup = DeletingPlaceholder(self)
 
    def hotkeyEventHandler(self, event):
@@ -1395,7 +1398,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.1.2'
+versionNumber = 'v0.1.3'
 app = wx.App()
 
 num = ctypes.c_uint32()
