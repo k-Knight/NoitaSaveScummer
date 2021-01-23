@@ -28,7 +28,8 @@ config = {
    'hotkey_load': ('control', 'alt', 'f9'),
    'hotkey_loadQuick': ('control', 'shift', 'f9'),
    'autoclose': True,
-   'executable_path': ''
+   'executable_path': '',
+   '7z_path': ''
 }
 colors = {
    'border':           wx.Colour(240, 207, 116),
@@ -185,6 +186,17 @@ def stylizeBorder(element, color):
 
    for pos in positions:
       wx.Panel(element, pos = pos, size = (2, 2)).SetBackgroundColour(colors[color])
+
+def selectArchiveTool():
+   extension = '.tar'
+   toolPath = ''
+
+   expectedPath = "C:\\Program Files\\7-Zip\\7z.exe"
+   if os.path.exists(expectedPath):
+      toolPath = expectedPath
+      extension = '.7z'
+
+   return extension, toolPath
 
 class ScaledBitmap (wx.Bitmap):
    def __init__(self, data, width, height, quality = wx.IMAGE_QUALITY_HIGH):
@@ -1360,8 +1372,8 @@ class HotkeyManager():
          self.reg_loadQuick = True
 
 class SaveManager():
-   def __init__(self):
-      pass
+   def __init__(self, extension):
+      self.extension = extension
 
    def findSaveFiles(self):
       global saveFiles
@@ -1370,25 +1382,38 @@ class SaveManager():
       files = os.listdir(config['saveFolderPath'])
       for file in files:
          name, extension = os.path.splitext(file)
-         if extension == '.tar':
+         if extension == self.extension:
             saveFiles[name] = config['saveFolderPath'] + file
 
    def backupSave(self, saveName):
-      savePath = config['saveFolderPath'] + '\\' + saveName + '.tar'
+      working_dir = os.getcwd()
+      os.chdir(config['saveFolderPath'])
 
-      with tarfile.open(savePath, 'w') as tar:
-         tar.add(config['saveFolderPath'] + '\\save00', arcname = 'save00')
+      if self.extension == '.tar':
+         with tarfile.open(saveName + self.extension, 'w') as tar:
+            tar.add('save00', arcname = 'save00')
+      elif self.extension == '.7z':
+         subprocess.check_output([config['7z_path'], "a", saveName + self.extension, "save00/*", "-mmt4", "-mx0", "-t7z"])
+
+      os.chdir(working_dir)
 
    def loadSave(self, saveName):
-      savePath = config['saveFolderPath'] + '\\' + saveName + '.tar'
-      if not os.path.exists(savePath):
+      working_dir = os.getcwd()
+      os.chdir(config['saveFolderPath'])
+
+      if not os.path.exists(saveName + self.extension):
          return
 
-      with tarfile.open(savePath, 'r') as tar:
-         tar.extractall(path = config['saveFolderPath'])
+      if self.extension == '.tar':
+         with tarfile.open(saveName + self.extension, 'r') as tar:
+            tar.extractall(path = config['saveFolderPath'])
+      elif self.extension == '.7z':
+         subprocess.check_output([config['7z_path'], "x", saveName + self.extension, "-y", "-mmt4"])
+
+      os.chdir(working_dir)
 
    def deleteSave(self, saveName):
-      savePath = config['saveFolderPath'] + '\\' + saveName + '.tar'
+      savePath = config['saveFolderPath'] + '\\' + saveName + self.extension
       if not os.path.exists(savePath):
          return
 
@@ -1398,7 +1423,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.1.3'
+versionNumber = 'v0.2.0'
 app = wx.App()
 
 num = ctypes.c_uint32()
@@ -1408,7 +1433,15 @@ ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
 readConfig()
 findNoitaExecutable()
 hkm = HotkeyManager()
-saveMng = SaveManager()
+
+saveExtension = '.tar'
+if config['7z_path'] == '':
+   saveExtension, toolPath = selectArchiveTool()
+   config['7z_path'] = toolPath
+else:
+   saveExtension = '.7z'
+
+saveMng = SaveManager(saveExtension)
 
 window = MainWindow(None)
 window.Show()
