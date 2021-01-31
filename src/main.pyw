@@ -1393,7 +1393,10 @@ class SaveManager():
          with tarfile.open(saveName + self.extension, 'w') as tar:
             tar.add('save00', arcname = 'save00')
       elif self.extension == '.7z':
-         subprocess.check_output([config['7z_path'], "a", saveName + self.extension, "save00/*", "-mmt4", "-mx0", "-t7z"])
+         si = subprocess.STARTUPINFO()
+         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+         subprocess.call('"' + config['7z_path'] + '" a ' + saveName + self.extension + ' save00/* -mmt4 -mx0 -t7z', startupinfo=si)
 
       os.chdir(working_dir)
 
@@ -1408,7 +1411,10 @@ class SaveManager():
          with tarfile.open(saveName + self.extension, 'r') as tar:
             tar.extractall(path = config['saveFolderPath'])
       elif self.extension == '.7z':
-         subprocess.check_output([config['7z_path'], "x", saveName + self.extension, "-y", "-mmt4"])
+         si = subprocess.STARTUPINFO()
+         si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+         subprocess.call('"' + config['7z_path'] + '" x ' + saveName + self.extension + ' -y -mmt4', startupinfo=si)
 
       os.chdir(working_dir)
 
