@@ -8,6 +8,8 @@ import datetime
 import subprocess
 import tarfile
 import ctypes
+import shutil
+import webbrowser
 
 from system_hotkey import SystemHotkey
 import yaml
@@ -29,7 +31,9 @@ config = {
    'hotkey_loadQuick': ('control', 'shift', 'f9'),
    'autoclose': True,
    'executable_path': '',
-   '7z_path': ''
+   '7z_path': '',
+   'steam_link': 'steam://rungameid/881100',
+   'use_steam_launch': True
 }
 colors = {
    'border':           wx.Colour(240, 207, 116),
@@ -108,6 +112,7 @@ scanCodes = {
    0x5b: 'super', 0x5c: 'super',
 }
 saveFiles = {}
+steamLaunchAvailable = False
 
 def toAscii(code):
    try:
@@ -174,6 +179,10 @@ def findNoitaExecutable():
       proc = findNoitaProcess()
       if proc:
          config['executable_path'] = proc.exe()
+
+   if 'Steam\\steamapps' in config['executable_path']:
+      global steamLaunchAvailable
+      steamLaunchAvailable = True
 
 def stylizeBorder(element, color):
    size = element.GetSize()
@@ -1263,13 +1272,18 @@ class MainWindow (wx.Frame):
       self.contentPanel.findSaveFiles()
       self.removePopup()
 
-      if self.needToLaunch and config['executable_path'] != '':
-         working_dir = os.getcwd()
-         noita_dir = os.path.dirname(config['executable_path'])
+      if self.needToLaunch:
+         print('steamLaunchAvailable :: ' + str(steamLaunchAvailable))
+         print('use_steam_launch :: ' + str(config['use_steam_launch']))
+         if steamLaunchAvailable and config['use_steam_launch']:
+            webbrowser.open(config['steam_link'])
+         elif config['executable_path'] != '':
+            working_dir = os.getcwd()
+            noita_dir = os.path.dirname(config['executable_path'])
 
-         os.chdir(noita_dir)
-         subprocess.Popen(config['executable_path'], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
-         os.chdir(working_dir)
+            os.chdir(noita_dir)
+            subprocess.Popen(config['executable_path'], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+            os.chdir(working_dir)
 
    def openOptionsMenu(self):
       hkm.unregisterAll()
@@ -1375,6 +1389,13 @@ class SaveManager():
    def __init__(self, extension):
       self.extension = extension
 
+   def deleteSaveFolder(self):
+      saveFolderPath = config['saveFolderPath'] + '\\save00'
+      if not os.path.exists(saveFolderPath):
+         return
+
+      shutil.rmtree(saveFolderPath)
+
    def findSaveFiles(self):
       global saveFiles
       saveFiles = {}
@@ -1407,6 +1428,7 @@ class SaveManager():
       if not os.path.exists(saveName + self.extension):
          return
 
+      self.deleteSaveFolder()
       if self.extension == '.tar':
          with tarfile.open(saveName + self.extension, 'r') as tar:
             tar.extractall(path = config['saveFolderPath'])
@@ -1422,14 +1444,14 @@ class SaveManager():
       savePath = config['saveFolderPath'] + '\\' + saveName + self.extension
       if not os.path.exists(savePath):
          return
-
+   
       try:
          os.remove(savePath)
       except:
          pass
 
 
-versionNumber = 'v0.2.0'
+versionNumber = 'v0.3.0'
 app = wx.App()
 
 num = ctypes.c_uint32()
