@@ -697,6 +697,13 @@ class ContentButton (wx.Button):
       self.border.SetBackgroundColour(colors['button'])
       self.border.Refresh()
 
+class FolderButton (ContentButton):
+   def __init__(self, parent):
+      ContentButton.__init__(self, parent, 'Save Dir', (150, 32), (2, 2))
+
+   def onClick(self, event):
+      subprocess.run(['explorer', config['saveFolderPath']])
+
 class OptionsButton (ContentButton):
    def __init__(self, parent):
       ContentButton.__init__(self, parent, 'Options', (150, 32), (2, 2))
@@ -1143,13 +1150,17 @@ class SaveFileListPanel (ContentPanel):
       stylizeBorder(self.saveList, 'content')
       self.saveList.ShowLoadingStatus()
 
-      panel = wx.Panel(self, pos = (63, 619), size = (154, 36))
+      panel = wx.Panel(self, pos = (15, 619), size = (154, 36))
       panel.SetBackgroundColour(colors['button'])
       self.saveButton = SaveButton(panel)
 
-      panel = wx.Panel(self, pos = (315, 619), size = (154, 36))
+      panel = wx.Panel(self, pos = (189, 619), size = (154, 36))
       panel.SetBackgroundColour(colors['button'])
       self.optionsButton = OptionsButton(panel)
+
+      panel = wx.Panel(self, pos = (363, 619), size = (154, 36))
+      panel.SetBackgroundColour(colors['button'])
+      self.folderButton = FolderButton(panel)
 
       thread = Thread(target = self.findSaveFiles, args=(True,))
       thread.start()
@@ -1158,11 +1169,13 @@ class SaveFileListPanel (ContentPanel):
       self.saveList.disable()
       self.saveButton.Disable()
       self.optionsButton.Disable()
+      self.folderButton.Disable()
 
    def enable(self):
       self.saveList.enable()
       self.saveButton.Enable()
       self.optionsButton.Enable()
+      self.folderButton.Enable()
 
 class DeleteSavePopupButton (ContentButton):
    def __init__(self, parent, saveName):
@@ -1451,7 +1464,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.3.0'
+versionNumber = 'v0.3.1'
 app = wx.App()
 
 num = ctypes.c_uint32()
