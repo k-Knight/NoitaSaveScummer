@@ -180,7 +180,7 @@ def findNoitaExecutable():
       if proc:
          config['executable_path'] = proc.exe()
 
-   if 'Steam\\steamapps' in config['executable_path']:
+   if 'steamapps\\common\\Noita' in config['executable_path']:
       global steamLaunchAvailable
       steamLaunchAvailable = True
 
@@ -1413,6 +1413,9 @@ class SaveManager():
       global saveFiles
       saveFiles = {}
 
+      if not os.path.exists(config['saveFolderPath']):
+         os.makedirs(config['saveFolderPath'])
+
       files = os.listdir(config['saveFolderPath'])
       for file in files:
          name, extension = os.path.splitext(file)
@@ -1464,7 +1467,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.3.1'
+versionNumber = 'v0.3.2'
 app = wx.App()
 
 num = ctypes.c_uint32()
