@@ -120,11 +120,14 @@ def toAscii(code):
    except:
       return None
 
+
 def readConfig():
-   if os.path.exists('./config.yaml'):
-      global config
-      with open('./config.yaml', 'r') as file:
-         config = yaml.load(file, Loader=yaml.FullLoader)
+    if os.path.exists('./config.yaml'):
+        global config
+        with open('./config.yaml', 'r') as file:
+            config_file = yaml.load(file, Loader=yaml.FullLoader)
+            if config_file is not None:
+                config = config_file
 
 def writeConfig():
    with open("./config.yaml" , "w") as file:
@@ -173,16 +176,40 @@ def waitForNoitaTermination():
       return True
    return False
 
-def findNoitaExecutable():
-   global config
-   if config['executable_path'] == '':
-      proc = findNoitaProcess()
-      if proc:
-         config['executable_path'] = proc.exe()
 
-   if 'steamapps\\common\\Noita' in config['executable_path']:
-      global steamLaunchAvailable
-      steamLaunchAvailable = True
+def findNoitaExecutable():
+    """
+    Find the Noita Executable Path and updates it to global config if
+    required.
+    If the config does not have a proper path, running Noita process's location
+    will be tried. If Noita was not running, it will then try to check some
+    default install locations.
+    """
+    global config
+    try:
+        if os.path.exists(config.get('executable_path')):
+            return
+
+        proc = findNoitaProcess()
+        if proc:
+            config['executable_path'] = proc.exe()
+            return
+
+        noita_bin_steam = '\\Steam\\steamapps\\common\\Noita\\Noita.exe'
+        x64_noita_bin_steam = os.path.expandvars("%programfiles(x86)%") + noita_bin_steam
+        x86_noita_bin_steam = os.path.expandvars("%programfiles%") + noita_bin_steam
+
+        candidates = [x86_noita_bin_steam, x64_noita_bin_steam]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                config['executable_path'] = candidate
+                return
+
+    finally:
+        if config.get('executable_path'):
+            global steamLaunchAvailable
+            steamLaunchAvailable = True
+
 
 def stylizeBorder(element, color):
    size = element.GetSize()
