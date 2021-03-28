@@ -7,3 +7,6 @@
 **/*.exe
 **/*.yaml
 **/*.zip
+
+.env
+.venv
