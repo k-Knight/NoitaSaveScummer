@@ -120,14 +120,13 @@ def toAscii(code):
    except:
       return None
 
-
 def readConfig():
-    if os.path.exists('./config.yaml'):
-        global config
-        with open('./config.yaml', 'r') as file:
-            config_file = yaml.load(file, Loader=yaml.FullLoader)
-            if config_file is not None:
-                config = config_file
+   if os.path.exists('./config.yaml'):
+      global config
+      with open('./config.yaml', 'r') as file:
+         config_file = yaml.load(file, Loader=yaml.FullLoader)
+         if config_file is not None:
+            config = config_file
 
 def writeConfig():
    with open("./config.yaml" , "w") as file:
@@ -145,16 +144,16 @@ def hitTest(rect, point):
    return deltaX > 0 and deltaX < rect[2] and deltaY > 0 and deltaY < rect[3]
 
 def get_hwnds_for_pid(pid):
-    def callback(hwnd, hwnds):
-        if win32gui.IsWindowVisible (hwnd) and win32gui.IsWindowEnabled(hwnd):
-            _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
-            if found_pid == pid:
-                hwnds.append(hwnd)
-        return True
+   def callback(hwnd, hwnds):
+      if win32gui.IsWindowVisible (hwnd) and win32gui.IsWindowEnabled(hwnd):
+         _, found_pid = win32process.GetWindowThreadProcessId(hwnd)
+         if found_pid == pid:
+            hwnds.append(hwnd)
+      return True
 
-    hwnds = []
-    win32gui.EnumWindows(callback, hwnds)
-    return hwnds
+   hwnds = []
+   win32gui.EnumWindows(callback, hwnds)
+   return hwnds
 
 def findNoitaProcess():
    for proc in psutil.process_iter():
@@ -176,40 +175,32 @@ def waitForNoitaTermination():
       return True
    return False
 
+def detectNoitaExecutable():
+   global config
+   if os.path.exists(config.get('executable_path')):
+      return
 
-def findNoitaExecutable():
-    """
-    Find the Noita Executable Path and updates it to global config if
-    required.
-    If the config does not have a proper path, running Noita process's location
-    will be tried. If Noita was not running, it will then try to check some
-    default install locations.
-    """
-    global config
-    try:
-        if os.path.exists(config.get('executable_path')):
-            return
+   proc = findNoitaProcess()
+   if proc:
+      config['executable_path'] = proc.exe()
+      return
 
-        proc = findNoitaProcess()
-        if proc:
-            config['executable_path'] = proc.exe()
-            return
+   noita_bin_steam = '\\Steam\\steamapps\\common\\Noita\\Noita.exe'
+   x64_noita_bin_steam = os.path.expandvars("%programfiles(x86)%") + noita_bin_steam
+   x86_noita_bin_steam = os.path.expandvars("%programfiles%") + noita_bin_steam
 
-        noita_bin_steam = '\\Steam\\steamapps\\common\\Noita\\Noita.exe'
-        x64_noita_bin_steam = os.path.expandvars("%programfiles(x86)%") + noita_bin_steam
-        x86_noita_bin_steam = os.path.expandvars("%programfiles%") + noita_bin_steam
+   candidates = [x86_noita_bin_steam, x64_noita_bin_steam]
+   for candidate in candidates:
+      if os.path.exists(candidate):
+         config['executable_path'] = candidate
+         return
 
-        candidates = [x86_noita_bin_steam, x64_noita_bin_steam]
-        for candidate in candidates:
-            if os.path.exists(candidate):
-                config['executable_path'] = candidate
-                return
+def findNoita():
+   detectNoitaExecutable()
 
-    finally:
-        if config.get('executable_path'):
-            global steamLaunchAvailable
-            steamLaunchAvailable = True
-
+   if 'steamapps\\common\\Noita' in config['executable_path']::
+      global steamLaunchAvailable
+      steamLaunchAvailable = True
 
 def stylizeBorder(element, color):
    size = element.GetSize()
@@ -1502,7 +1493,7 @@ data = (ctypes.c_char * len(resources_Gamepixies_8MO6n_ttf))(*resources_Gamepixi
 ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
 
 readConfig()
-findNoitaExecutable()
+findNoita()
 hkm = HotkeyManager()
 
 saveExtension = '.tar'
