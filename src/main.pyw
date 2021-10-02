@@ -125,8 +125,11 @@ def readConfig():
       global config
       with open('./config.yaml', 'r') as file:
          config_file = yaml.load(file, Loader=yaml.FullLoader)
-         if config_file is not None:
-            config = config_file
+         if config_file:
+            for item in config:
+               if item in config_file:
+                  value = config_file[item]
+                  config[item] = value if value else ''
 
 def writeConfig():
    with open("./config.yaml" , "w") as file:
@@ -157,9 +160,8 @@ def get_hwnds_for_pid(pid):
 
 def findNoitaProcess():
    for proc in psutil.process_iter():
-      if 'noita' in proc.name().lower():
-         if 'noita' in proc.exe():
-            return proc
+      if 'noita.exe' in proc.name().lower():
+         return proc
    return None
 
 def waitForNoitaTermination():
@@ -1485,7 +1487,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.3.3'
+versionNumber = 'v0.3.4'
 app = wx.App()
 
 num = ctypes.c_uint32()
