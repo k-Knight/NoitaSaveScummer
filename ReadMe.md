@@ -10,6 +10,8 @@ All necessary settings are customizable through the **"Options"** menu that can 
 
 The program does not know where the Noita's executable is located, therefore it will not attempt to launch Noita back after closing the application. To fix that you should start the program while Noita us running or select an executable file in the **"Options"** menu.
 
+If you want faster saving and loading you can consider installing [**7-zip**](https://www.7-zip.org/) file archiver (if you do not use the default installation path, be sure to specify the path to the program in the settings file).
+
 ## Default configuration
 
 - **Noita's save folder path** — ``%USERPROFILE%\AppData\LocalLow\Nolla_Games_Noita``
