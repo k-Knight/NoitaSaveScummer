@@ -5,7 +5,6 @@ import subprocess
 import sys
 from threading import Thread
 import datetime
-import subprocess
 import tarfile
 import ctypes
 import shutil
@@ -216,16 +215,26 @@ def stylizeBorder(element, color):
    for pos in positions:
       wx.Panel(element, pos = pos, size = (2, 2)).SetBackgroundColour(colors[color])
 
+def find7Zip():
+   envPath = shutil.which('7z.exe')
+   if envPath:
+      return envPath
+
+   candidates = ["C:\\Program Files\\7-Zip\\7z.exe"]
+   for candidate in candidates:
+      if os.path.exists(candidate):
+         return candidate
+
+   return ''
+
 def selectArchiveTool():
    extension = '.tar'
-   toolPath = ''
 
-   expectedPath = "C:\\Program Files\\7-Zip\\7z.exe"
-   if os.path.exists(expectedPath):
-      toolPath = expectedPath
+   config['7z_path'] = find7Zip()
+   if config['7z_path'] != '':
       extension = '.7z'
 
-   return extension, toolPath
+   return extension
 
 class ScaledBitmap (wx.Bitmap):
    def __init__(self, data, width, height, quality = wx.IMAGE_QUALITY_HIGH):
@@ -487,7 +496,7 @@ class LoadSaveButton (ListMenuButton):
       ListMenuButton.__init__(self, parent, pos, name, path, resources_load_png, mouseMoveHandler)
 
    def PerformAction(self):
-      window.makeLoad(self.name)
+      window.makeLoad(self.path)
 
 class DeleteSaveButton (ListMenuButton):
    def __init__(self, parent, pos, name, path, mouseMoveHandler):
@@ -497,7 +506,7 @@ class DeleteSaveButton (ListMenuButton):
       ListMenuButton.__init__(self, parent, pos, name, path, resources_close_png, mouseMoveHandler)
 
    def PerformAction(self):
-      window.openDeleteMenu(self.name)
+      window.openDeleteMenu(self.path)
 
 class ScrollableList (wx.Panel):
    def __init__(self, parent, size, pos):
@@ -1198,16 +1207,16 @@ class SaveFileListPanel (ContentPanel):
       self.folderButton.Enable()
 
 class DeleteSavePopupButton (ContentButton):
-   def __init__(self, parent, saveName):
+   def __init__(self, parent, savePath):
       ContentButton.__init__(self, parent, 'Delete', (150, 36), (2, 2))
       self.hoverColor = colors['button-red']
-      self.saveName = saveName
+      self.savePath = savePath
 
    def onClick(self, event):
-      window.makeDelete(self.saveName)
+      window.makeDelete(self.savePath)
 
 class DeleteSavePopup (wx.Panel):
-   def __init__(self, parent, saveName):
+   def __init__(self, parent, savePath):
       wx.Panel.__init__(self, parent, size = (550, 160), pos = (75, 270))
 
       self.Raise()
@@ -1227,7 +1236,7 @@ class DeleteSavePopup (wx.Panel):
 
       panel = wx.Panel(contentPanel, size = (154, 40), pos = (30, 86))
       panel.SetBackgroundColour(colors['button'])
-      DeleteSavePopupButton(panel, saveName)
+      DeleteSavePopupButton(panel, savePath)
 
 class MainWindow (wx.Frame):
    def __init__(self, parent):
@@ -1265,9 +1274,9 @@ class MainWindow (wx.Frame):
    def __del__( self ):
       pass
 
-   def deleteThread(self, name):
+   def deleteThread(self, path):
       self.needToLaunch = False
-      saveMng.deleteSave(name)
+      saveMng.deleteSave(path)
       wx.PostEvent(self, self.processCompletedEvent())
 
    def saveThread(self, name):
@@ -1275,9 +1284,9 @@ class MainWindow (wx.Frame):
       saveMng.backupSave(name)
       wx.PostEvent(self, self.processCompletedEvent())
 
-   def loadThread(self, name):
+   def loadThread(self, path):
       self.needToLaunch = waitForNoitaTermination()
-      saveMng.loadSave(name)
+      saveMng.loadSave(path)
       wx.PostEvent(self, self.processCompletedEvent())
 
    def makeSave(self, name):
@@ -1287,18 +1296,18 @@ class MainWindow (wx.Frame):
       thread = Thread(target = self.saveThread, args=(name,))
       thread.start()
 
-   def makeLoad(self, name):
+   def makeLoad(self, path):
       self.removePopup()
       self.showLoadPlaceholder()
 
-      thread = Thread(target = self.loadThread, args=(name,))
+      thread = Thread(target = self.loadThread, args=(path,))
       thread.start()
 
-   def makeDelete(self, name):
+   def makeDelete(self, path):
       self.removePopup()
       self.showDeletePlaceholder()
 
-      thread = Thread(target = self.deleteThread, args=(name,))
+      thread = Thread(target = self.deleteThread, args=(path,))
       thread.start()
 
    def processComplete(self, event):
@@ -1328,10 +1337,10 @@ class MainWindow (wx.Frame):
       self.contentPanel.disable()
       self.popup = NewSaveMenu(self)
 
-   def openDeleteMenu(self, saveName):
+   def openDeleteMenu(self, savePath):
       hkm.unregisterAll()
       self.contentPanel.disable()
-      self.popup = DeleteSavePopup(self, saveName)
+      self.popup = DeleteSavePopup(self, savePath)
 
    def removePopup(self):
       if self.popup:
@@ -1358,11 +1367,11 @@ class MainWindow (wx.Frame):
    def hotkeyEventHandler(self, event):
       # 'load' event has no special behavior
       if event.data == 'save-quick':
-         self.makeSave('!!quicksave')
+         self.makeSave('!!quicksave~' + str(saveMng.getQuicksaveNumber()))
       elif event.data == 'save':
          self.openNewSaveMenu()
       if event.data == 'load-quick':
-         self.makeLoad('!!quicksave')
+         self.makeLoad('!!quicksave~' + str(saveMng.getQuicksaveNumber()))
 
       self.Refresh()
 
@@ -1439,10 +1448,42 @@ class SaveManager():
       files = os.listdir(config['saveFolderPath'])
       for file in files:
          name, extension = os.path.splitext(file)
-         if extension == self.extension:
-            saveFiles[name] = config['saveFolderPath'] + file
+         if extension in supportedExtensions:
+            saveFiles[name] = config['saveFolderPath'] + '\\' + file
+
+   def getQuicksaveNumber(self):
+      global saveFiles
+      latestSave = None
+      saveTime = 0
+
+      for saveFile in saveFiles:
+         if saveFile.startswith('!!quicksave'):
+            fileTime = os.path.getmtime(saveFiles[saveFile])
+            if saveTime < fileTime:
+               saveTime = fileTime
+               latestSave = saveFile
+
+      if latestSave == '!!quicksave':
+         try:
+            name, extension = os.path.splitext(saveFiles[latestSave])
+            os.rename(saveFiles[latestSave], name + '~1' + extension)
+         except:
+            pass
+
+         return 2
+      else:
+         try:
+            number = int(latestSave[-1]) + 1
+            return 1 if number > 3 else number
+         except:
+            return 1
 
    def backupSave(self, saveName):
+      global saveFiles
+      for saveFile in saveFiles:
+         if saveFile == saveName:
+            self.deleteSave(saveFiles[saveName])
+
       working_dir = os.getcwd()
       os.chdir(config['saveFolderPath'])
 
@@ -1457,27 +1498,27 @@ class SaveManager():
 
       os.chdir(working_dir)
 
-   def loadSave(self, saveName):
+   def loadSave(self, savePath):
       working_dir = os.getcwd()
       os.chdir(config['saveFolderPath'])
 
-      if not os.path.exists(saveName + self.extension):
+      if not os.path.exists(savePath):
          return
 
       self.deleteSaveFolder()
-      if self.extension == '.tar':
-         with tarfile.open(saveName + self.extension, 'r') as tar:
+      extension = os.path.splitext(savePath)[1]
+      if extension == '.tar':
+         with tarfile.open(savePath, 'r') as tar:
             tar.extractall(path = config['saveFolderPath'])
-      elif self.extension == '.7z':
+      elif extension == '.7z':
          si = subprocess.STARTUPINFO()
          si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
 
-         subprocess.call('"' + config['7z_path'] + '" x ' + saveName + self.extension + ' -y -mmt4', startupinfo=si)
+         subprocess.call('"' + config['7z_path'] + '" x ' + savePath + ' -y -mmt4', startupinfo=si)
 
       os.chdir(working_dir)
 
-   def deleteSave(self, saveName):
-      savePath = config['saveFolderPath'] + '\\' + saveName + self.extension
+   def deleteSave(self, savePath):
       if not os.path.exists(savePath):
          return
    
@@ -1487,7 +1528,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.3.4'
+versionNumber = 'v0.4.0'
 app = wx.App()
 
 num = ctypes.c_uint32()
@@ -1496,16 +1537,13 @@ ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
 
 readConfig()
 findNoita()
+
 hkm = HotkeyManager()
+saveMng = SaveManager(selectArchiveTool())
 
-saveExtension = '.tar'
-if config['7z_path'] == '':
-   saveExtension, toolPath = selectArchiveTool()
-   config['7z_path'] = toolPath
-else:
-   saveExtension = '.7z'
-
-saveMng = SaveManager(saveExtension)
+supportedExtensions = ['.tar']
+if config['7z_path'] != '':
+   supportedExtensions.append('.7z')
 
 window = MainWindow(None)
 window.Show()
