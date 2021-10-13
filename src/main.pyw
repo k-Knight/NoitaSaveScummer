@@ -12,6 +12,7 @@ import webbrowser
 
 from system_hotkey import SystemHotkey
 import yaml
+import win32api
 import win32gui
 import win32process
 import win32con
@@ -111,7 +112,6 @@ scanCodes = {
    0x5b: 'super', 0x5c: 'super',
 }
 saveFiles = {}
-steamLaunchAvailable = False
 
 def toAscii(code):
    try:
@@ -120,6 +120,7 @@ def toAscii(code):
       return None
 
 def readConfig():
+   os.chdir(working_dir)
    if os.path.exists('./config.yaml'):
       global config
       with open('./config.yaml', 'r') as file:
@@ -131,6 +132,7 @@ def readConfig():
                   config[item] = value if value else ''
 
 def writeConfig():
+   os.chdir(working_dir)
    with open("./config.yaml" , "w") as file:
       yaml.dump(config , file)
 
@@ -159,24 +161,28 @@ def get_hwnds_for_pid(pid):
 
 def findNoitaProcess():
    for proc in psutil.process_iter():
-      if 'noita.exe' in proc.name().lower():
+      if 'noita.exe' == proc.name().lower():
          return proc
    return None
 
 def waitForNoitaTermination():
    proc = findNoitaProcess()
    if proc:
+      config['executable_path'] = proc.exe()
+
       if config['autoclose']:
          hwnd = get_hwnds_for_pid(proc.pid)
          if len(hwnd) > 0:
             hwnd = hwnd[0]
             win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
 
-      psutil.wait_procs([proc])
-      return True
-   return False
+      _, alive = psutil.wait_procs([proc])
+      if len(alive):
+         return False, False
+      return True, True
+   return False, True
 
-def detectNoitaExecutable():
+def findNoita():
    global config
    if os.path.exists(config.get('executable_path')):
       return
@@ -186,22 +192,21 @@ def detectNoitaExecutable():
       config['executable_path'] = proc.exe()
       return
 
-   noita_bin_steam = '\\Steam\\steamapps\\common\\Noita\\Noita.exe'
-   x64_noita_bin_steam = os.path.expandvars("%programfiles(x86)%") + noita_bin_steam
-   x86_noita_bin_steam = os.path.expandvars("%programfiles%") + noita_bin_steam
+   candidates = []
 
-   candidates = [x86_noita_bin_steam, x64_noita_bin_steam]
+   noita_bin_steam = '\\steamapps\\common\\Noita\\Noita.exe'
+   candidates.append(os.path.expandvars("%programfiles(x86)%") + '\\Steam' + noita_bin_steam)
+   candidates.append(os.path.expandvars("%programfiles%") + '\\Steam' + noita_bin_steam)
+
+   drives = win32api.GetLogicalDriveStrings()
+   drives = drives.split('\0')[:-1]
+   for drive in drives:
+      candidates.append(drive + '\\SteamLibrary' + noita_bin_steam)
+
    for candidate in candidates:
       if os.path.exists(candidate):
          config['executable_path'] = candidate
          return
-
-def findNoita():
-   detectNoitaExecutable()
-
-   if 'steamapps\\common\\Noita' in config['executable_path']:
-      global steamLaunchAvailable
-      steamLaunchAvailable = True
 
 def stylizeBorder(element, color):
    size = element.GetSize()
@@ -1280,13 +1285,15 @@ class MainWindow (wx.Frame):
       wx.PostEvent(self, self.processCompletedEvent())
 
    def saveThread(self, name):
-      self.needToLaunch = waitForNoitaTermination()
-      saveMng.backupSave(name)
+      self.needToLaunch, canSave = waitForNoitaTermination()
+      if canSave:
+         saveMng.backupSave(name)
       wx.PostEvent(self, self.processCompletedEvent())
 
    def loadThread(self, path):
-      self.needToLaunch = waitForNoitaTermination()
-      saveMng.loadSave(path)
+      self.needToLaunch, canSave = waitForNoitaTermination()
+      if canSave:
+         saveMng.loadSave(path)
       wx.PostEvent(self, self.processCompletedEvent())
 
    def makeSave(self, name):
@@ -1315,17 +1322,11 @@ class MainWindow (wx.Frame):
       self.removePopup()
 
       if self.needToLaunch:
-         print('steamLaunchAvailable :: ' + str(steamLaunchAvailable))
-         print('use_steam_launch :: ' + str(config['use_steam_launch']))
-         if steamLaunchAvailable and config['use_steam_launch']:
+         if 'steamapps\\common\\Noita' in config['executable_path'] and config['use_steam_launch']:
             webbrowser.open(config['steam_link'])
          elif config['executable_path'] != '':
-            working_dir = os.getcwd()
-            noita_dir = os.path.dirname(config['executable_path'])
-
-            os.chdir(noita_dir)
+            os.chdir(os.path.dirname(config['executable_path']))
             subprocess.Popen(config['executable_path'], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
-            os.chdir(working_dir)
 
    def openOptionsMenu(self):
       hkm.unregisterAll()
@@ -1367,7 +1368,8 @@ class MainWindow (wx.Frame):
    def hotkeyEventHandler(self, event):
       # 'load' event has no special behavior
       if event.data == 'save-quick':
-         self.makeSave('!!quicksave~' + str(saveMng.getQuicksaveNumber()))
+         saveNumber = saveMng.getQuicksaveNumber()
+         self.makeSave('!!quicksave~' + str(1 if saveNumber > 3 else saveNumber))
       elif event.data == 'save':
          self.openNewSaveMenu()
       if event.data == 'load-quick':
@@ -1470,11 +1472,10 @@ class SaveManager():
          except:
             pass
 
-         return 2
+         return 1
       else:
          try:
-            number = int(latestSave[-1]) + 1
-            return 1 if number > 3 else number
+            return int(latestSave[-1])
          except:
             return 1
 
@@ -1484,7 +1485,6 @@ class SaveManager():
          if saveFile == saveName:
             self.deleteSave(saveFiles[saveName])
 
-      working_dir = os.getcwd()
       os.chdir(config['saveFolderPath'])
 
       if self.extension == '.tar':
@@ -1496,10 +1496,7 @@ class SaveManager():
 
          subprocess.call('"' + config['7z_path'] + '" a ' + saveName + self.extension + ' save00/* -mmt4 -mx0 -t7z', startupinfo=si)
 
-      os.chdir(working_dir)
-
    def loadSave(self, savePath):
-      working_dir = os.getcwd()
       os.chdir(config['saveFolderPath'])
 
       if not os.path.exists(savePath):
@@ -1516,8 +1513,6 @@ class SaveManager():
 
          subprocess.call('"' + config['7z_path'] + '" x ' + savePath + ' -y -mmt4', startupinfo=si)
 
-      os.chdir(working_dir)
-
    def deleteSave(self, savePath):
       if not os.path.exists(savePath):
          return
@@ -1528,9 +1523,10 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.4.0'
+versionNumber = 'v0.4.1'
 app = wx.App()
 
+working_dir = os.getcwd()
 num = ctypes.c_uint32()
 data = (ctypes.c_char * len(resources_Gamepixies_8MO6n_ttf))(*resources_Gamepixies_8MO6n_ttf)
 ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
