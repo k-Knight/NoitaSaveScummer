@@ -1373,7 +1373,9 @@ class MainWindow (wx.Frame):
       elif event.data == 'save':
          self.openNewSaveMenu()
       if event.data == 'load-quick':
-         self.makeLoad('!!quicksave~' + str(saveMng.getQuicksaveNumber()))
+         saveName = '!!quicksave~' + str(saveMng.getQuicksaveNumber())
+         if saveName in saveFiles:
+            self.makeLoad(saveFiles[saveName])
 
       self.Refresh()
 
@@ -1523,7 +1525,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.4.1'
+versionNumber = 'v0.4.2'
 app = wx.App()
 
 working_dir = os.getcwd()
