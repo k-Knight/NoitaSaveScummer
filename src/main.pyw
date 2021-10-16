@@ -32,8 +32,9 @@ config = {
    'autoclose': True,
    'executable_path': '',
    '7z_path': '',
-   'steam_link': 'steam://rungameid/881100',
-   'use_steam_launch': True
+   'steam_launch': '',
+   'use_steam_launch': True,
+   'launch_arguments': ['-no_logo_splashes', '-gamemode 4294967295', '-save_slot 0']
 }
 colors = {
    'border':           wx.Colour(240, 207, 116),
@@ -182,6 +183,23 @@ def waitForNoitaTermination():
       return True, True
    return False, True
 
+def findExecutable(binary_loc, prefix_prog_files, prefix_independent):
+   candidates = []
+
+   candidates.append(os.path.expandvars('%programfiles(x86)%') + prefix_prog_files + binary_loc)
+   candidates.append(os.path.expandvars('%programfiles%') + prefix_prog_files + binary_loc)
+
+   drives = win32api.GetLogicalDriveStrings()
+   drives = drives.split('\0')[:-1]
+   for drive in drives:
+      candidates.append(drive + prefix_independent + binary_loc)
+
+   for candidate in candidates:
+      if os.path.exists(candidate):
+         return candidate
+
+   return ''
+
 def findNoita():
    global config
    if os.path.exists(config.get('executable_path')):
@@ -192,21 +210,25 @@ def findNoita():
       config['executable_path'] = proc.exe()
       return
 
-   candidates = []
+   path = findExecutable('\\steamapps\\common\\Noita\\Noita.exe', '\\Steam', '\\SteamLibrary')
+   if path != '':
+      config['executable_path'] = path
 
-   noita_bin_steam = '\\steamapps\\common\\Noita\\Noita.exe'
-   candidates.append(os.path.expandvars("%programfiles(x86)%") + '\\Steam' + noita_bin_steam)
-   candidates.append(os.path.expandvars("%programfiles%") + '\\Steam' + noita_bin_steam)
+def findSteam():
+   global config
+   if os.path.exists(config.get('steam_launch')):
+      return
 
-   drives = win32api.GetLogicalDriveStrings()
-   drives = drives.split('\0')[:-1]
-   for drive in drives:
-      candidates.append(drive + '\\SteamLibrary' + noita_bin_steam)
+   path = findExecutable('\\Steam\\steam.exe', '', '')
+   if path != '':
+      config['steam_launch'] = path
 
-   for candidate in candidates:
-      if os.path.exists(candidate):
-         config['executable_path'] = candidate
-         return
+def find7Zip():
+   envPath = shutil.which('7z.exe')
+   if envPath:
+      return envPath
+
+   return findExecutable('\\7-Zip\\7z.exe', '', '')
 
 def stylizeBorder(element, color):
    size = element.GetSize()
@@ -220,22 +242,11 @@ def stylizeBorder(element, color):
    for pos in positions:
       wx.Panel(element, pos = pos, size = (2, 2)).SetBackgroundColour(colors[color])
 
-def find7Zip():
-   envPath = shutil.which('7z.exe')
-   if envPath:
-      return envPath
-
-   candidates = ["C:\\Program Files\\7-Zip\\7z.exe"]
-   for candidate in candidates:
-      if os.path.exists(candidate):
-         return candidate
-
-   return ''
-
 def selectArchiveTool():
    extension = '.tar'
 
-   config['7z_path'] = find7Zip()
+   if not os.path.exists(config.get('7z_path')):
+      config['7z_path'] = find7Zip()
    if config['7z_path'] != '':
       extension = '.7z'
 
@@ -645,19 +656,31 @@ class SaveInstance (wx.Panel):
       panel.SetBackgroundColour(colors['save-item'])
 
       sizerVertical = wx.BoxSizer(orient=wx.VERTICAL)
-      contentSizer = wx.BoxSizer(orient=wx.HORIZONTAL)
+      mainTextSizer = wx.BoxSizer(orient=wx.HORIZONTAL)
+      secondaryTextSizer = wx.BoxSizer(orient=wx.HORIZONTAL)
 
-      sizerVertical.AddStretchSpacer()
-      sizerVertical.Add(contentSizer)
-      sizerVertical.AddStretchSpacer()
+      sizerVertical.AddStretchSpacer(3)
+      sizerVertical.Add(mainTextSizer)
+      sizerVertical.AddSpacer(3)
+      sizerVertical.Add(secondaryTextSizer)
+      sizerVertical.AddStretchSpacer(2)
       panel.SetSizer(sizerVertical)
 
-      contentSizer.AddSpacer(25)
+      mainTextSizer.AddSpacer(25)
       font = wx.Font(14, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_LIGHT, faceName = 'GamePixies')
       text = wx.StaticText(panel, size = wx.Size(-1, -1), label = self.saveName)
       text.SetForegroundColour(colors['main-text'])
       text.SetFont(font)
-      contentSizer.Add(text)
+      mainTextSizer.Add(text)
+
+      time_str = datetime.datetime.fromtimestamp(
+         os.path.getmtime(self.savePath)).strftime('%H : %M : %S        %d %b %Y')
+      secondaryTextSizer.AddSpacer(25)
+      font = wx.Font(10, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_LIGHT, faceName = 'GamePixies')
+      text = wx.StaticText(panel, size = wx.Size(-1, -1), label = time_str)
+      text.SetForegroundColour(colors['secondary-text'])
+      text.SetFont(font)
+      secondaryTextSizer.Add(text)
 
       panel.Layout()
 
@@ -808,9 +831,9 @@ class OptionChangePanel (wx.Panel):
    def enable(self):
       self.disabled = False
 
-class OptionAutoclose (OptionChangePanel):
-   def __init__(self, parent, pos, optionsMenu, config):
-      OptionChangePanel.__init__(self, parent, label = "Autoclose Noita :", pos = pos, align = wx.ALIGN_RIGHT, config = config)
+class OptionCheckbox (OptionChangePanel):
+   def __init__(self, parent, pos, optionsMenu, config, label, option):
+      OptionChangePanel.__init__(self, parent, label = label, pos = pos, align = wx.ALIGN_RIGHT, config = config) 
       self.value.Destroy()
       self.wrapper.SetSize((38, 38))
       self.textPanel.SetSize((34, 34))
@@ -819,11 +842,12 @@ class OptionAutoclose (OptionChangePanel):
       self.value.Bind(wx.EVT_LEAVE_WINDOW, self.onMouseMove)
       self.value.Bind(wx.EVT_LEFT_UP, self.onClick)
 
+      self.option = option
       stylizeBorder(self.wrapper, 'content')
       self.setValue()
 
    def setValue(self):
-      if self.config['autoclose']:
+      if self.config[self.option]:
          self.value.SetBackgroundColour(colors['button'])
       else:
          self.value.SetBackgroundColour(colors['text-input'])
@@ -832,8 +856,16 @@ class OptionAutoclose (OptionChangePanel):
 
    def onClick(self, event):
       if not self.disabled:
-         self.config['autoclose'] = not self.config['autoclose']
+         self.config[self.option] = not self.config[self.option]
          self.setValue()
+
+class OptionAutoclose (OptionCheckbox):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Autoclose Noita :', 'autoclose')
+
+class OptionUseSteamLaunch (OptionCheckbox):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Use Steam launch :', 'use_steam_launch')
 
 class FolderSelectSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, config):
@@ -860,34 +892,60 @@ class FolderSelectSetting (OptionChangePanel):
          self.config['saveFolderPath'] = dialog.GetPath()
          self.setValue()
 
-class ExecutableSelectSetting (OptionChangePanel):
-   def __init__(self, parent, pos, optionsMenu, config):
-      OptionChangePanel.__init__(self, parent, label = "Path to executable :", pos = pos, align = wx.ALIGN_LEFT, config = config)
+class OptionExecutableSelect (OptionChangePanel):
+   def __init__(self, parent, pos, optionsMenu, config, label, option, hint):
+      OptionChangePanel.__init__(self, parent, label = label, pos = pos, align = wx.ALIGN_LEFT, config = config)
       self.optionsMenu = optionsMenu
+      self.option = option
+      self.hint = hint
       self.setValue()
 
    def setValue(self):
-      self.value.SetLabel(self.config['executable_path'])
+      self.value.SetLabel(self.config[self.option])
       self.wrapper.Refresh()
 
    def onClick(self, event):
-      defaultPath = self.config['executable_path']
+      defaultPath = self.config[self.option]
       if defaultPath == '':
          defaultPath = os.path.expanduser('~')
 
       if not self.disabled:
          dialog = wx.FileDialog(
             self,
-            message='Select Noita executable',
-            defaultDir=os.path.dirname(defaultPath),
-            style=wx.FD_DEFAULT_STYLE | wx.FD_FILE_MUST_EXIST,
-            pos=wx.DefaultPosition,
-            size=wx.DefaultSize,
-            wildcard="Executable files (*.exe)|*.exe"
+            message = self.hint,
+            defaultDir = os.path.dirname(defaultPath),
+            style = wx.FD_DEFAULT_STYLE | wx.FD_FILE_MUST_EXIST,
+            pos = wx.DefaultPosition,
+            size = wx.DefaultSize,
+            wildcard = 'Executable files (*.exe)|*.exe'
          )
          if not dialog.ShowModal() == wx.ID_CANCEL:
-            self.config['executable_path'] = dialog.GetPath()
+            self.config[self.option] = dialog.GetPath()
             self.setValue()
+
+class NoitaExeSelectSetting (OptionExecutableSelect):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionExecutableSelect.__init__(
+         self,
+         parent,
+         pos,
+         optionsMenu,
+         config,
+         'Path to executable :',
+         'executable_path',
+         'Select Noita executable')
+
+class SteamExeSelectSetting (OptionExecutableSelect):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionExecutableSelect.__init__(
+         self,
+         parent,
+         pos,
+         optionsMenu,
+         config,
+         'Path to steam :',
+         'steam_launch',
+         'Select Steam executable')
 
 class BindingSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, binding, label, config):
@@ -970,7 +1028,7 @@ class BindingSetting (OptionChangePanel):
 
 class OptionsMenu (wx.Panel):
    def __init__(self, parent):
-      wx.Panel.__init__(self, parent, size = (550, 550), pos = (75, 75))
+      wx.Panel.__init__(self, parent, size = (550, 680), pos = (75, 10))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
       stylizeBorder(self, 'text-input')
@@ -978,14 +1036,14 @@ class OptionsMenu (wx.Panel):
       global config
       self.config = dict(config)
 
-      contentPanel = wx.Panel(self, size = (546, 546), pos = (2,2))
+      contentPanel = wx.Panel(self, size = (546, 676), pos = (2,2))
       contentPanel.SetBackgroundColour(colors['content'])
 
-      panel = wx.Panel(contentPanel, pos = (45, 491), size = (154, 40))
+      panel = wx.Panel(contentPanel, pos = (45, 621), size = (154, 40))
       panel.SetBackgroundColour(colors['button'])
       self.closeButton = ClosePopupButton(panel)
 
-      panel = wx.Panel(contentPanel, pos = (347, 491), size = (154, 40))
+      panel = wx.Panel(contentPanel, pos = (347, 621), size = (154, 40))
       panel.SetBackgroundColour(colors['button'])
       self.saveButton = SaveOptionsButton(panel, self)
 
@@ -1009,7 +1067,13 @@ class OptionsMenu (wx.Panel):
          OptionAutoclose(contentPanel, (15, 340), self, self.config)
       )
       self.options.append(
-         ExecutableSelectSetting(contentPanel, (15, 405), self , self.config)
+         NoitaExeSelectSetting(contentPanel, (15, 405), self , self.config)
+      )
+      self.options.append(
+         OptionUseSteamLaunch(contentPanel, (15, 470), self, self.config)
+      )
+      self.options.append(
+         SteamExeSelectSetting(contentPanel, (15, 535), self, self.config)
       )
 
    def disable(self):
@@ -1322,11 +1386,20 @@ class MainWindow (wx.Frame):
       self.removePopup()
 
       if self.needToLaunch:
-         if 'steamapps\\common\\Noita' in config['executable_path'] and config['use_steam_launch']:
-            webbrowser.open(config['steam_link'])
+         if config['steam_launch'] != '' and config['use_steam_launch']:
+            launch = [config['steam_launch'], '-applaunch', '881100']
+            for argument in config[launch_arguments]:
+               launch.append(argument)
+
          elif config['executable_path'] != '':
             os.chdir(os.path.dirname(config['executable_path']))
-            subprocess.Popen(config['executable_path'], close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
+
+            launch = [config['executable_path']]
+            for argument in config[launch_arguments]:
+               launch.append(argument)
+
+         if launch:
+            subprocess.Popen(launch, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
 
    def openOptionsMenu(self):
       hkm.unregisterAll()
@@ -1369,7 +1442,7 @@ class MainWindow (wx.Frame):
       # 'load' event has no special behavior
       if event.data == 'save-quick':
          saveNumber = saveMng.getQuicksaveNumber()
-         self.makeSave('!!quicksave~' + str(1 if saveNumber > 3 else saveNumber))
+         self.makeSave('!!quicksave~' + str(1 if saveNumber == 3 else saveNumber + 1))
       elif event.data == 'save':
          self.openNewSaveMenu()
       if event.data == 'load-quick':
@@ -1455,6 +1528,8 @@ class SaveManager():
          if extension in supportedExtensions:
             saveFiles[name] = config['saveFolderPath'] + '\\' + file
 
+      saveFiles = dict(sorted(saveFiles.items(), key=lambda item: os.path.getmtime(item[1]), reverse=True))
+
    def getQuicksaveNumber(self):
       global saveFiles
       latestSave = None
@@ -1462,10 +1537,8 @@ class SaveManager():
 
       for saveFile in saveFiles:
          if saveFile.startswith('!!quicksave'):
-            fileTime = os.path.getmtime(saveFiles[saveFile])
-            if saveTime < fileTime:
-               saveTime = fileTime
-               latestSave = saveFile
+            latestSave = saveFile
+            break
 
       if latestSave == '!!quicksave':
          try:
@@ -1525,7 +1598,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.4.2'
+versionNumber = 'v0.5.0'
 app = wx.App()
 
 working_dir = os.getcwd()
@@ -1535,6 +1608,7 @@ ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
 
 readConfig()
 findNoita()
+findSteam()
 
 hkm = HotkeyManager()
 saveMng = SaveManager(selectArchiveTool())
