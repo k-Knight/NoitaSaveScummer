@@ -14,12 +14,20 @@ If you want faster saving and loading you can consider installing [**7-zip**](ht
 
 ## Default configuration
 
-- **Noita's save folder path** — ``%USERPROFILE%\AppData\LocalLow\Nolla_Games_Noita``
-- **Quick-Save** — ``Ctrl`` + ``Shift`` + ``F5``
-- **Quick-Load** — ``Ctrl`` + ``Shift`` + ``F9``
-- **Save** — ``Ctrl`` + ``Alt`` + ``F5``
-- **Load** — ``Ctrl`` + ``Alt`` + ``F9``
-- **Autoclose Noita** — ``Yes``
-- **Noita's executable path** — ``None``
-- **Use Steam launch** — ``Yes``
-- **Steam executable path** — ``None``
+- **Noita's save folder path** — `%USERPROFILE%\AppData\LocalLow\Nolla_Games_Noita`
+- **Quick-Save** — <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F5</kbd>
+- **Quick-Load** — <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>F9</kbd>
+- **Save** — <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F5</kbd>
+- **Load** — <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F9</kbd>
+- **Autoclose Noita** — `Yes`
+- **Noita's executable path** — `None`
+- **Use Steam launch** — `Yes`
+- **Steam executable path** — `None`
+
+## Compiling the source code
+
+1. Enter **`src`** directory
+2. Run **`resource_encoder.py`** to pack resources
+3. Run **`compile.py`** to produce the final executable file, it will be located in the **`dist`** directory
+
+>**NOTE:** If python modules are missing then **`compile.py`** will try to run **`install_modules.ps1`** script with elevated privileges.
