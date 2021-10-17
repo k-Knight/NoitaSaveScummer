@@ -161,14 +161,14 @@ def get_hwnds_for_pid(pid):
    win32gui.EnumWindows(callback, hwnds)
    return hwnds
 
-def findNoitaProcess():
+def findProcess(procName):
    for proc in psutil.process_iter():
-      if 'noita.exe' == proc.name().lower():
+      if procName == proc.name().lower():
          return proc
    return None
 
 def waitForNoitaTermination():
-   proc = findNoitaProcess()
+   proc = findProcess('noita.exe')
    if proc:
       config['executable_path'] = proc.exe()
 
@@ -206,7 +206,7 @@ def findNoita():
    if os.path.exists(config.get('executable_path')):
       return
 
-   proc = findNoitaProcess()
+   proc = findProcess('noita.exe')
    if proc:
       config['executable_path'] = proc.exe()
       return
@@ -218,6 +218,11 @@ def findNoita():
 def findSteam():
    global config
    if os.path.exists(config.get('steam_launch')):
+      return
+
+   proc = findProcess('steam.exe')
+   if proc:
+      config['steam_launch'] = proc.exe()
       return
 
    path = findExecutable('\\Steam\\steam.exe', '', '')
@@ -1598,7 +1603,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.5.1'
+versionNumber = 'v0.5.2'
 app = wx.App()
 
 working_dir = os.getcwd()
