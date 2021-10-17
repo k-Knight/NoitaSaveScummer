@@ -130,7 +130,8 @@ def readConfig():
             for item in config:
                if item in config_file:
                   value = config_file[item]
-                  config[item] = value if value else ''
+                  if value != '':
+                     config[item] = value
 
 def writeConfig():
    os.chdir(working_dir)
@@ -1388,17 +1389,16 @@ class MainWindow (wx.Frame):
       if self.needToLaunch:
          if config['steam_launch'] != '' and config['use_steam_launch']:
             launch = [config['steam_launch'], '-applaunch', '881100']
-            for argument in config[launch_arguments]:
-               launch.append(argument)
 
          elif config['executable_path'] != '':
             os.chdir(os.path.dirname(config['executable_path']))
-
             launch = [config['executable_path']]
-            for argument in config[launch_arguments]:
-               launch.append(argument)
 
          if launch:
+            for argument in config['launch_arguments']:
+               for word in argument.split():
+                  if word != '':
+                     launch.append(word)
             subprocess.Popen(launch, close_fds=True, creationflags=subprocess.DETACHED_PROCESS)
 
    def openOptionsMenu(self):
@@ -1598,7 +1598,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.5.0'
+versionNumber = 'v0.5.1'
 app = wx.App()
 
 working_dir = os.getcwd()
