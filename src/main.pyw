@@ -176,12 +176,18 @@ def waitForNoitaTermination():
          hwnd = get_hwnds_for_pid(proc.pid)
          if len(hwnd) > 0:
             hwnd = hwnd[0]
-            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            try:
+               win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            except:
+               pass
 
-      _, alive = psutil.wait_procs([proc])
-      if len(alive):
+      try:
+         while psutil.pid_exists(proc.pid) and psutil.Process(proc.pid).name().lower() == 'noita.exe':
+            time.sleep(0.1)
+      except:
          return False, False
-      return True, True
+
+      return config['autoclose'], True
    return False, True
 
 def findExecutable(binary_loc, prefix_prog_files, prefix_independent):
@@ -1153,31 +1159,55 @@ class NewSaveButton (ContentButton):
       window.makeSave(name)
 
 class PlaceholderPanel (wx.Panel):
-   def __init__(self, parent, text, pos):
+   def __init__(self, parent, label):
       wx.Panel.__init__(self, parent, size = (550, 230), pos = (75, 235))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
       stylizeBorder(self, 'text-input')
 
+      self.label = label
+
       self.contentPanel = wx.Panel(self, size = (546, 226), pos = (2,2))
       self.contentPanel.SetBackgroundColour(colors['content'])
 
       font = wx.Font(18, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_LIGHT, faceName = 'GamePixies')
-      text = wx.StaticText(self.contentPanel, size = wx.Size(-1, -1), label = text, pos = pos)
-      text.SetForegroundColour(colors['secondary-text'])
-      text.SetFont(font)
+      self.text = wx.StaticText(self.contentPanel, size = wx.Size(-1, -1), label = self.label)
+      self.text.SetForegroundColour(colors['secondary-text'])
+      self.text.SetFont(font)
 
-class SavingPlaceholder (PlaceholderPanel):
-   def __init__(self, parent):
-      PlaceholderPanel.__init__(self, parent, 'Saving, please wait ...', (150, 100))
+      horSizer = wx.BoxSizer(orient=wx.HORIZONTAL)
+      horSizer.Add(self.text, 1, wx.CENTER)
 
-class LoadingPlaceholder (PlaceholderPanel):
+      verSizer = wx.BoxSizer(orient=wx.VERTICAL)
+      verSizer.Add(horSizer, 1, wx.CENTER)
+
+      self.contentPanel.SetSizer(verSizer)
+      self.contentPanel.Layout()
+      self.setText(self.label)
+
+   def setText(self, text):
+      self.text.SetLabel(text)
+      self.contentPanel.Layout()
+
+class WaitingPlaceholder (PlaceholderPanel):
+   def __init__(self, parent, label):
+      PlaceholderPanel.__init__(self, parent, label)
+      self.setText('Waiting for Noita to close ...')
+
+   def setActionLabel(self):
+      self.setText(self.label)
+
+class SavingPlaceholder (WaitingPlaceholder):
    def __init__(self, parent):
-      PlaceholderPanel.__init__(self, parent, 'Loading, please wait ...', (150, 100))
+      WaitingPlaceholder.__init__(self, parent, 'Saving, please wait ...')
+
+class LoadingPlaceholder (WaitingPlaceholder):
+   def __init__(self, parent):
+      WaitingPlaceholder.__init__(self, parent, 'Loading, please wait ...')
 
 class DeletingPlaceholder (PlaceholderPanel):
    def __init__(self, parent):
-      PlaceholderPanel.__init__(self, parent, 'Deleting, please wait ...', (150, 100))
+      PlaceholderPanel.__init__(self, parent, 'Deleting, please wait ...')
 
 class NewSaveMenu (wx.Panel):
    def __init__(self, parent):
@@ -1335,8 +1365,12 @@ class MainWindow (wx.Frame):
 
       self.hotkeyEvent, EVT_RESULT = NewEvent()
       self.Bind(EVT_RESULT, self.hotkeyEventHandler)
+
       self.processCompletedEvent, EVT_RESULT = NewEvent()
       self.Bind(EVT_RESULT, self.processComplete)
+
+      self.noitaWaitEndEvent, EVT_RESULT = NewEvent()
+      self.Bind(EVT_RESULT, self.waitForNoitaEneded)
 
       TitlePanel(self)
       self.contentPanel = SaveFileListPanel(self)
@@ -1354,17 +1388,19 @@ class MainWindow (wx.Frame):
       saveMng.deleteSave(path)
       wx.PostEvent(self, self.processCompletedEvent())
 
-   def saveThread(self, name):
-      self.needToLaunch, canSave = waitForNoitaTermination()
-      if canSave:
-         saveMng.backupSave(name)
+   def waitForNoitaThenAction(self, callback):
+      self.needToLaunch, canDoAction = waitForNoitaTermination()
+      wx.PostEvent(self, self.noitaWaitEndEvent())
+
+      if canDoAction:
+         callback()
       wx.PostEvent(self, self.processCompletedEvent())
 
+   def saveThread(self, name):
+      self.waitForNoitaThenAction(lambda: saveMng.backupSave(name))
+
    def loadThread(self, path):
-      self.needToLaunch, canSave = waitForNoitaTermination()
-      if canSave:
-         saveMng.loadSave(path)
-      wx.PostEvent(self, self.processCompletedEvent())
+      self.waitForNoitaThenAction(lambda: saveMng.loadSave(path))
 
    def makeSave(self, name):
       self.removePopup()
@@ -1386,6 +1422,9 @@ class MainWindow (wx.Frame):
 
       thread = Thread(target = self.deleteThread, args=(path,))
       thread.start()
+
+   def waitForNoitaEneded(self, event):
+      self.popup.setActionLabel()
 
    def processComplete(self, event):
       self.contentPanel.findSaveFiles()
@@ -1603,7 +1642,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.5.2'
+versionNumber = 'v0.5.3'
 app = wx.App()
 
 working_dir = os.getcwd()
