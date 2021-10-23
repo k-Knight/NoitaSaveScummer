@@ -10,6 +10,8 @@ All necessary settings are customizable through the **"Options"** menu that can 
 
 If you are running Noita with elevated privileges (*as Administrator*), then you will have to close Noita manually (*you should probably also disable the Autoclose option*).
 
+If you want the program to launch the game upon loading a save file *(if the game is not launched already)*, then just check the **"Launch Noita on load"** option in the **"Options"** menu.
+
 The program does not know where the Noita's executable is located, therefore it will not attempt to launch Noita back after closing the application. To fix that you should start the program while Noita us running or select an executable file in the **"Options"** menu.
 
 If you want faster saving and loading you can consider installing [**7-zip**](https://www.7-zip.org/) file archiver (if you do not use the default installation path, be sure to specify the path to the program in the settings file or add it to the PATH environment variable).
@@ -22,8 +24,9 @@ If you want faster saving and loading you can consider installing [**7-zip**](ht
 - **Save** — <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F5</kbd>
 - **Load** — <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>F9</kbd>
 - **Autoclose Noita** — `Yes`
-- **Noita's executable path** — `None`
+- **Launch Noita on loading save** — `No`
 - **Use Steam launch** — `Yes`
+- **Noita's executable path** — `None`
 - **Steam executable path** — `None`
 
 ## Compiling the source code

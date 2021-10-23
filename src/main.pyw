@@ -30,6 +30,7 @@ config = {
    'hotkey_load': ('control', 'alt', 'f9'),
    'hotkey_loadQuick': ('control', 'shift', 'f9'),
    'autoclose': True,
+   'launch_on_load': False,
    'executable_path': '',
    '7z_path': '',
    'steam_launch': '',
@@ -181,14 +182,16 @@ def waitForNoitaTermination():
             except:
                pass
 
-      try:
-         while psutil.pid_exists(proc.pid) and psutil.Process(proc.pid).name().lower() == 'noita.exe':
-            time.sleep(0.1)
-      except:
-         return False, False
+      while psutil.pid_exists(proc.pid):
+         try:
+            if psutil.Process(proc.pid).name().lower() != 'noita.exe':
+               break
+         except:
+            pass
+         time.sleep(0.1)
 
       return config['autoclose'], True
-   return False, True
+   return config['launch_on_load'], True
 
 def findExecutable(binary_loc, prefix_prog_files, prefix_independent):
    candidates = []
@@ -875,6 +878,11 @@ class OptionAutoclose (OptionCheckbox):
    def __init__(self, parent, pos, optionsMenu, config):
       OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Autoclose Noita :', 'autoclose')
 
+class OptionLoadLaunch (OptionCheckbox):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Launch Noita on load :', 'launch_on_load')
+      self.Raise()
+
 class OptionUseSteamLaunch (OptionCheckbox):
    def __init__(self, parent, pos, optionsMenu, config):
       OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Use Steam launch :', 'use_steam_launch')
@@ -1079,10 +1087,13 @@ class OptionsMenu (wx.Panel):
          OptionAutoclose(contentPanel, (15, 340), self, self.config)
       )
       self.options.append(
-         NoitaExeSelectSetting(contentPanel, (15, 405), self , self.config)
+         OptionLoadLaunch(contentPanel, (285, 340), self, self.config)
       )
       self.options.append(
-         OptionUseSteamLaunch(contentPanel, (15, 470), self, self.config)
+         OptionUseSteamLaunch(contentPanel, (15, 405), self, self.config)
+      )
+      self.options.append(
+         NoitaExeSelectSetting(contentPanel, (15, 470), self , self.config)
       )
       self.options.append(
          SteamExeSelectSetting(contentPanel, (15, 535), self, self.config)
@@ -1642,7 +1653,7 @@ class SaveManager():
          pass
 
 
-versionNumber = 'v0.5.3'
+versionNumber = 'v0.5.4'
 app = wx.App()
 
 working_dir = os.getcwd()
