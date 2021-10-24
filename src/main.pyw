@@ -9,6 +9,7 @@ import tarfile
 import ctypes
 import shutil
 import webbrowser
+from enum import Enum
 
 from system_hotkey import SystemHotkey
 import yaml
@@ -20,6 +21,8 @@ import keyboard
 import psutil
 import wx
 from wx.lib.newevent import NewEvent
+from watchdog.observers import Observer
+from watchdog.events import PatternMatchingEventHandler
 
 from mem_resources.resources import *
 
@@ -35,8 +38,10 @@ config = {
    '7z_path': '',
    'steam_launch': '',
    'use_steam_launch': True,
-   'launch_arguments': ['-no_logo_splashes', '-gamemode 4294967295', '-save_slot 0']
+   'launch_arguments': ['-no_logo_splashes', '-gamemode 4294967295', '-save_slot 0'],
+   'display_save_status' : True
 }
+
 colors = {
    'border':           wx.Colour(240, 207, 116),
    'border-light':     wx.Colour(107, 101,  96),
@@ -54,6 +59,7 @@ colors = {
    'progress-pending': wx.Colour( 51,  45,  18),
    'progress':         wx.Colour(205, 196,  72)
 }
+
 scanCodes = {
    0x02: '1',
    0x03: '2',
@@ -113,7 +119,17 @@ scanCodes = {
    0x38: 'alt', 0xe038: 'alt',
    0x5b: 'super', 0x5c: 'super',
 }
+
+class Action(Enum):
+   delete = 0
+   load = 1
+   save = 2
+
 saveFiles = {}
+
+saveStatus = {
+   'player_pos': None
+}
 
 def toAscii(code):
    try:
@@ -168,7 +184,7 @@ def findProcess(procName):
          return proc
    return None
 
-def waitForNoitaTermination():
+def waitForNoitaTermination(action):
    proc = findProcess('noita.exe')
    if proc:
       config['executable_path'] = proc.exe()
@@ -191,7 +207,7 @@ def waitForNoitaTermination():
          time.sleep(0.1)
 
       return config['autoclose'], True
-   return config['launch_on_load'], True
+   return config['launch_on_load'] if action == Action.load else False, True
 
 def findExecutable(binary_loc, prefix_prog_files, prefix_independent):
    candidates = []
@@ -245,17 +261,30 @@ def find7Zip():
 
    return findExecutable('\\7-Zip\\7z.exe', '', '')
 
-def stylizeBorder(element, color):
+def stylizeBorder(element):
+   if hasattr(element, 'styleBorder') and element.styleBorder:
+      for border in element.styleBorder:
+         border.Destroy()
+
+   element.styleBorder = []
+   element.SetBackgroundStyle(wx.BG_STYLE_CUSTOM)
    size = element.GetSize()
    positions = [
-      (0, 0),
-      (0, size.GetHeight() - 2),
-      (size.GetWidth() - 2, 0),
-      (size.GetWidth() - 2, size.GetHeight() - 2)
+      (2, 0),
+      (2, size.GetHeight() - 2),
+      (0, 2),
+      (size.GetWidth() - 2, 2)
+   ]
+   sizes = [
+      (size.GetWidth() - 4, 2),
+      (size.GetWidth() - 4, 2),
+      (2, size.GetHeight() - 4),
+      (2, size.GetHeight() - 4)
    ]
 
-   for pos in positions:
-      wx.Panel(element, pos = pos, size = (2, 2)).SetBackgroundColour(colors[color])
+   for i in range(0, len(positions)):
+      element.styleBorder.append(wx.Panel(element, pos = positions[i], size = sizes[i]))
+      element.styleBorder[-1].SetBackgroundColour(element.GetBackgroundColour())
 
 def selectArchiveTool():
    extension = '.tar'
@@ -266,6 +295,57 @@ def selectArchiveTool():
       extension = '.7z'
 
    return extension
+
+def getTextInQuotes(source, start):
+   if source[start] != '"':
+      return None
+
+   result = ''
+   pos = start + 1
+   while source[pos] != '"':
+      result += source[pos]
+      pos += 1
+
+   return result if len(result) else None
+
+def updatePlayerSaveStatus():
+   time.sleep(5)
+   with open(config['saveFolderPath'] + '\\save00\\player.xml', 'r') as file:
+      content = file.read()
+      posXStr = 'position.x='
+      posYStr = 'position.y='
+
+      try:
+         xValue = getTextInQuotes(content, content.index(posXStr) + len(posXStr))
+         yValue = getTextInQuotes(content, content.index(posYStr) + len(posYStr))
+      except:
+         return
+
+      if xValue and yValue:
+         try:
+            saveStatus['player_pos'] = (int(float(xValue)), int(float(yValue)))
+            window.saveStatusChanged()
+         except:
+            pass
+
+def saveDirChangeHandler(event):
+   if event.src_path.endswith('\\player.xml'):
+      thread = Thread(target = updatePlayerSaveStatus)
+      thread.start()
+
+def watchSaveDirectory():
+   thread = Thread(target = updatePlayerSaveStatus)
+   thread.start()
+
+   eventHandler = PatternMatchingEventHandler(['*'], None, False, True)
+   eventHandler.on_created = saveDirChangeHandler
+   eventHandler.on_modified = saveDirChangeHandler
+
+   saveDirObserver = Observer()
+   saveDirObserver.schedule(eventHandler, config['saveFolderPath'], recursive = True)
+   saveDirObserver.start()
+
+   return saveDirObserver
 
 class ScaledBitmap (wx.Bitmap):
    def __init__(self, data, width, height, quality = wx.IMAGE_QUALITY_HIGH):
@@ -498,6 +578,7 @@ class ListScrollBar (wx.Panel):
 
 class ListMenuButton (ActionBitmapButton):
    def __init__(self, parent, pos, name, path, data, mouseMoveHandler):
+      self.parent = parent
       self.name = name
       self.path = path
       self.onMouseMove = mouseMoveHandler
@@ -510,6 +591,27 @@ class ListMenuButton (ActionBitmapButton):
          style = wx.BORDER_NONE,
          pos = pos
       )
+
+      self.boderElement = []
+      self.SetBackgroundColour(self.passiveColor)
+
+   def setUpBorder(self):
+      if len(self.boderElement) > 0:
+         for element in self.boderElement:
+            element.Destroy()
+         self.boderElement = []
+
+      size = self.GetSize()
+      positions = [
+         (0, 0),
+         (size.GetWidth() - 2, 0),
+         (0, size.GetHeight() - 2),
+         (size.GetWidth() - 2, size.GetHeight() - 2)
+      ]
+
+      for pos in positions:
+         self.boderElement.append(wx.Panel(self, pos = pos, size = (2, 2)))
+         self.boderElement[-1].SetBackgroundColour(self.parent.GetBackgroundColour())
 
    def onMouseEnter(self, event):
       self.SetBackgroundColour(self.hoverColor)
@@ -525,6 +627,7 @@ class LoadSaveButton (ListMenuButton):
       self.hoverColor = colors['hover-light']
 
       ListMenuButton.__init__(self, parent, pos, name, path, resources_load_png, mouseMoveHandler)
+      self.setUpBorder()
 
    def PerformAction(self):
       window.makeLoad(self.path)
@@ -535,6 +638,7 @@ class DeleteSaveButton (ListMenuButton):
       self.hoverColor = colors['hover-red']
 
       ListMenuButton.__init__(self, parent, pos, name, path, resources_close_png, mouseMoveHandler)
+      self.setUpBorder()
 
    def PerformAction(self):
       window.openDeleteMenu(self.path)
@@ -554,6 +658,7 @@ class ScrollableList (wx.Panel):
       self.containerWrapper = wx.Panel(self, size = (self.ContentWidth, self.ContentHeight), pos = (2, 2))
       self.containerWrapper.SetBackgroundColour(colors['text-input'])
 
+      wx.Panel(self, pos = (self.ContentWidth + 2, 2), size = (2, self.ContentHeight)).SetBackgroundColour(colors['border-light'])
       self.scrollBar = ListScrollBar(self, pos = (self.ContentWidth + 4, 2))
 
       self.container, self.contentSizer = self.CreateContainer()
@@ -665,7 +770,7 @@ class SaveInstance (wx.Panel):
       self.hoverColor = colors['border']
       self.passiveColor = colors['border-light']
       self.interactivePanel.SetBackgroundColour(self.passiveColor)
-      stylizeBorder(self.interactivePanel, 'text-input')
+      stylizeBorder(self.interactivePanel)
 
       panel = wx.Panel(self.interactivePanel, size = (sizeX - 34, 66), pos = (2,2))
       panel.SetBackgroundColour(colors['save-item'])
@@ -708,9 +813,7 @@ class SaveInstance (wx.Panel):
          element.Bind(wx.EVT_LEAVE_WINDOW, self.onMouseMove)
 
       self.loadButton = LoadSaveButton(panel, (panel.GetSize().GetWidth() - 102, 15), self.saveName, self.savePath, self.onMouseMove)
-      stylizeBorder(self.loadButton, 'save-item')
       self.deleteButton = DeleteSaveButton(panel, (panel.GetSize().GetWidth() - 51, 15), self.saveName, self.savePath, self.onMouseMove)
-      stylizeBorder(self.deleteButton, 'save-item')
 
    def onMouseMove(self, event):
       if self.enabled:
@@ -746,12 +849,12 @@ class ContentButton (wx.Button):
    def __init__(self, parent, label, size, pos):
       wx.Button.__init__(self, parent, label = label, size = size, style = wx.BORDER_NONE, pos = pos)
       self.border = parent
-      stylizeBorder(parent, 'content')
       self.passiveColor = colors['background']
       self.hoverColor = colors['hover-light']
 
       self.SetForegroundColour(colors['main-text'])
       self.SetBackgroundColour(self.passiveColor)
+      stylizeBorder(parent)
       font = wx.Font(18, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL, faceName = 'GamePixies')
       self.SetFont(font)
 
@@ -814,7 +917,7 @@ class OptionChangePanel (wx.Panel):
 
       self.wrapper = wx.Panel(self, pos = (170, 6), size = (346, 38))
       self.wrapper.SetBackgroundColour(colors['button'])
-      stylizeBorder(self.wrapper, 'content')
+      stylizeBorder(self.wrapper)
 
       self.textPanel = wx.Panel(self.wrapper, pos = (2, 2), size = (342, 34))
       self.textPanel.SetBackgroundColour(colors['text-input'])
@@ -848,7 +951,7 @@ class OptionChangePanel (wx.Panel):
 
 class OptionCheckbox (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, config, label, option):
-      OptionChangePanel.__init__(self, parent, label = label, pos = pos, align = wx.ALIGN_RIGHT, config = config) 
+      OptionChangePanel.__init__(self, parent, label = label, pos = pos, align = wx.ALIGN_RIGHT, config = config)
       self.value.Destroy()
       self.wrapper.SetSize((38, 38))
       self.textPanel.SetSize((34, 34))
@@ -858,7 +961,7 @@ class OptionCheckbox (OptionChangePanel):
       self.value.Bind(wx.EVT_LEFT_UP, self.onClick)
 
       self.option = option
-      stylizeBorder(self.wrapper, 'content')
+      stylizeBorder(self.wrapper)
       self.setValue()
 
    def setValue(self):
@@ -886,6 +989,11 @@ class OptionLoadLaunch (OptionCheckbox):
 class OptionUseSteamLaunch (OptionCheckbox):
    def __init__(self, parent, pos, optionsMenu, config):
       OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Use Steam launch :', 'use_steam_launch')
+
+class OptionDisplayStatus (OptionCheckbox):
+   def __init__(self, parent, pos, optionsMenu, config):
+      OptionCheckbox.__init__(self, parent, pos, optionsMenu, config, 'Show save info :', 'display_save_status')
+      self.Raise()
 
 class FolderSelectSetting (OptionChangePanel):
    def __init__(self, parent, pos, optionsMenu, config):
@@ -1051,8 +1159,8 @@ class OptionsMenu (wx.Panel):
       wx.Panel.__init__(self, parent, size = (550, 680), pos = (75, 10))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
-      stylizeBorder(self, 'text-input')
-      
+      stylizeBorder(self)
+
       global config
       self.config = dict(config)
 
@@ -1087,10 +1195,13 @@ class OptionsMenu (wx.Panel):
          OptionAutoclose(contentPanel, (15, 340), self, self.config)
       )
       self.options.append(
-         OptionLoadLaunch(contentPanel, (285, 340), self, self.config)
+         OptionLoadLaunch(contentPanel, (270, 340), self, self.config)
       )
       self.options.append(
          OptionUseSteamLaunch(contentPanel, (15, 405), self, self.config)
+      )
+      self.options.append(
+         OptionDisplayStatus(contentPanel, (270, 405), self, self.config)
       )
       self.options.append(
          NoitaExeSelectSetting(contentPanel, (15, 470), self , self.config)
@@ -1117,6 +1228,9 @@ class OptionsMenu (wx.Panel):
       global config
       config = dict(self.config)
       writeConfig()
+
+      #apply gui config gui changes
+      window.statusInfo.Show(config['display_save_status'])
 
 class SaveButton (ContentButton):
    def __init__(self, parent):
@@ -1174,7 +1288,7 @@ class PlaceholderPanel (wx.Panel):
       wx.Panel.__init__(self, parent, size = (550, 230), pos = (75, 235))
       self.Raise()
       self.SetBackgroundColour(colors['border'])
-      stylizeBorder(self, 'text-input')
+      stylizeBorder(self)
 
       self.label = label
 
@@ -1226,7 +1340,7 @@ class NewSaveMenu (wx.Panel):
 
       self.Raise()
       self.SetBackgroundColour(colors['border'])
-      stylizeBorder(self, 'text-input')
+      stylizeBorder(self)
 
       contentPanel = wx.Panel(self, size = (546, 226), pos = (2,2))
       contentPanel.SetBackgroundColour(colors['content'])
@@ -1238,7 +1352,7 @@ class NewSaveMenu (wx.Panel):
 
       panel = wx.Panel(contentPanel, size = (486, 50), pos = (30, 70))
       panel.SetBackgroundColour(colors['button'])
-      stylizeBorder(panel, 'content')
+      stylizeBorder(panel)
       panel = wx.Panel(panel, size = (482, 46), pos = (2, 2))
       panel.SetBackgroundColour(colors['text-input'])
 
@@ -1292,7 +1406,7 @@ class SaveFileListPanel (ContentPanel):
 
    def CreateContent(self):
       self.saveList = ScrollableList(self, size = (502, 555), pos = (15, 50))
-      stylizeBorder(self.saveList, 'content')
+      stylizeBorder(self.saveList)
       self.saveList.ShowLoadingStatus()
 
       panel = wx.Panel(self, pos = (15, 619), size = (154, 36))
@@ -1354,6 +1468,31 @@ class DeleteSavePopup (wx.Panel):
       panel.SetBackgroundColour(colors['button'])
       DeleteSavePopupButton(panel, savePath)
 
+class SaveStatusInfo (wx.Panel):
+   def __init__(self, parent):
+      wx.Panel.__init__(self, parent, size = (132, 55), pos = (17, 435), style=wx.TRANSPARENT_WINDOW)
+
+      self.Raise()
+      self.SetBackgroundColour(colors['border-light'])
+      stylizeBorder(self)
+
+      content = wx.Panel(self, pos = (2, 2), size = (128, 51))
+      content.SetBackgroundColour(colors['text-input'])
+
+      font = wx.Font(13, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_LIGHT, faceName = 'GamePixies')
+      self.playerX = wx.StaticText(content, size = wx.Size(-1, -1), label = 'x :  ???', pos = (15, 5))
+      self.playerX.SetForegroundColour(colors['secondary-text'])
+      self.playerX.SetFont(font)
+
+      self.playerY = wx.StaticText(content, size = wx.Size(-1, -1), label = 'y :  ???', pos = (15, 23))
+      self.playerY.SetForegroundColour(colors['secondary-text'])
+      self.playerY.SetFont(font)
+
+   def updateStatus(self):
+      if saveStatus['player_pos']:
+         self.playerX.SetLabel('x :  ' + str(saveStatus['player_pos'][0]))
+         self.playerY.SetLabel('y :  ' + str(saveStatus['player_pos'][1]))
+
 class MainWindow (wx.Frame):
    def __init__(self, parent):
       wx.Frame.__init__(
@@ -1372,7 +1511,7 @@ class MainWindow (wx.Frame):
       self.SetBackgroundColour(colors['border'])
       self.Centre(wx.BOTH)
 
-      stylizeBorder(self, 'text-input')
+      stylizeBorder(self)
 
       self.hotkeyEvent, EVT_RESULT = NewEvent()
       self.Bind(EVT_RESULT, self.hotkeyEventHandler)
@@ -1383,6 +1522,9 @@ class MainWindow (wx.Frame):
       self.noitaWaitEndEvent, EVT_RESULT = NewEvent()
       self.Bind(EVT_RESULT, self.waitForNoitaEneded)
 
+      self.saveStatusChangedEvent, EVT_RESULT = NewEvent()
+      self.Bind(EVT_RESULT, self.updateSaveStatus)
+
       TitlePanel(self)
       self.contentPanel = SaveFileListPanel(self)
       wx.Panel(self, pos = (164, 28), size = (3, 670)).SetBackgroundColour(colors['border-light'])
@@ -1390,17 +1532,25 @@ class MainWindow (wx.Frame):
       line.SetBackgroundColour(colors['border-light'])
       wx.StaticBitmap(self, bitmap=ScaledBitmap(resources_background_png, 696, 670), pos = (2, 28), size = (162, 670))
       wx.Panel(line, pos = (162, 0), size = (2, 2)).SetBackgroundColour(colors['background'])
+      self.statusInfo = SaveStatusInfo(self)
+      self.statusInfo.Show(config['display_save_status'])
 
    def __del__( self ):
       pass
+
+   def updateSaveStatus(self, event):
+      self.statusInfo.updateStatus()
+
+   def saveStatusChanged(self):
+      wx.PostEvent(self, self.saveStatusChangedEvent())
 
    def deleteThread(self, path):
       self.needToLaunch = False
       saveMng.deleteSave(path)
       wx.PostEvent(self, self.processCompletedEvent())
 
-   def waitForNoitaThenAction(self, callback):
-      self.needToLaunch, canDoAction = waitForNoitaTermination()
+   def waitForNoitaThenAction(self, callback, action):
+      self.needToLaunch, canDoAction = waitForNoitaTermination(action)
       wx.PostEvent(self, self.noitaWaitEndEvent())
 
       if canDoAction:
@@ -1408,10 +1558,10 @@ class MainWindow (wx.Frame):
       wx.PostEvent(self, self.processCompletedEvent())
 
    def saveThread(self, name):
-      self.waitForNoitaThenAction(lambda: saveMng.backupSave(name))
+      self.waitForNoitaThenAction(lambda: saveMng.backupSave(name), Action.save)
 
    def loadThread(self, path):
-      self.waitForNoitaThenAction(lambda: saveMng.loadSave(path))
+      self.waitForNoitaThenAction(lambda: saveMng.loadSave(path), Action.load)
 
    def makeSave(self, name):
       self.removePopup()
@@ -1646,14 +1796,14 @@ class SaveManager():
    def deleteSave(self, savePath):
       if not os.path.exists(savePath):
          return
-   
+
       try:
          os.remove(savePath)
       except:
          pass
 
 
-versionNumber = 'v0.5.4'
+versionNumber = 'v0.5.5'
 app = wx.App()
 
 working_dir = os.getcwd()
@@ -1674,8 +1824,12 @@ if config['7z_path'] != '':
 
 window = MainWindow(None)
 window.Show()
+
+saveDirObserver = watchSaveDirectory()
 app.MainLoop()
 
 #exit program
+saveDirObserver.stop()
+saveDirObserver.join()
 hkm.unregisterAll()
 writeConfig()
