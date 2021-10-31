@@ -26,6 +26,7 @@ If you want faster saving and loading you can consider installing [**7-zip**](ht
 - **Autoclose Noita** — `Yes`
 - **Launch Noita on loading save** — `No`
 - **Use Steam launch** — `Yes`
+- **Show information about save file** — `Yes`
 - **Noita's executable path** — `None`
 - **Steam executable path** — `None`
 
