@@ -23,6 +23,7 @@ import wx
 from wx.lib.newevent import NewEvent
 from watchdog.observers import Observer
 from watchdog.events import PatternMatchingEventHandler
+import locale
 
 from mem_resources.resources import *
 
@@ -309,7 +310,7 @@ def getTextInQuotes(source, start):
    return result if len(result) else None
 
 def updatePlayerSaveStatus():
-   time.sleep(5)
+   time.sleep(2)
    with open(config['saveFolderPath'] + '\\save00\\player.xml', 'r') as file:
       content = file.read()
       posXStr = 'position.x='
@@ -1802,11 +1803,23 @@ class SaveManager():
       except:
          pass
 
+class NoitaSaveScummer(wx.App):
+   def OnInit(self):
+      global window
 
-versionNumber = 'v0.5.5'
-app = wx.App()
+      window = MainWindow(None)
+      window.Show()
 
+      return True
+
+   def InitLocale(self):
+      locale.setlocale(locale.LC_ALL, 'C')
+
+versionNumber = 'v0.5.6'
+
+locale.setlocale(locale.LC_ALL, 'C')
 working_dir = os.getcwd()
+
 num = ctypes.c_uint32()
 data = (ctypes.c_char * len(resources_Gamepixies_8MO6n_ttf))(*resources_Gamepixies_8MO6n_ttf)
 ctypes.windll.gdi32.AddFontMemResourceEx(data, len(data), 0, ctypes.byref(num))
@@ -1822,8 +1835,8 @@ supportedExtensions = ['.tar']
 if config['7z_path'] != '':
    supportedExtensions.append('.7z')
 
-window = MainWindow(None)
-window.Show()
+window = None
+app = NoitaSaveScummer()
 
 saveDirObserver = watchSaveDirectory()
 app.MainLoop()
